@@ -1,12 +1,64 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QFormLayout,
                              QLineEdit, QComboBox, QPushButton, QLabel, QMessageBox,
-                             QTableWidget, QTableWidgetItem, QSpinBox, QDateEdit, QDialog)
+                             QTableWidget, QTableWidgetItem, QSpinBox, QDateEdit, QDialog,
+                             QRadioButton, QButtonGroup)
 from PySide6.QtCore import Qt, QDate
 from datetime import datetime, timedelta
 from database import (get_all_products, get_all_payment_modes, create_or_get_client,
                       create_sale, get_sales_by_vendor_id, get_sale_by_id, 
-                      update_sale, is_manager, get_all_debts, update_debt_status, create_debt, is_credit_payment)
+                      update_sale, is_manager, get_all_debts, update_debt_status, create_debt, is_credit_payment,
+                      get_clients_by_phone, create_client_direct)
 from invoice_generator import generate_invoice, open_invoice
+
+
+class ClientSelectionDialog(QDialog):
+    def __init__(self, existing_clients, new_client_data, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Choix du Client")
+        self.setMinimumWidth(400)
+        
+        layout = QVBoxLayout()
+        
+        layout.addWidget(QLabel("Ce numéro de téléphone est déjà pris. Veuillez choisir :"))
+        
+        self.radio_group = QButtonGroup(self)
+        self.radio_buttons = []
+        
+        for client in existing_clients:
+            nom_complet = f"{client['nom_client'] or ''} {client['prenom_client'] or ''} {client['postnom_client'] or ''}".strip()
+            rb = QRadioButton(f"EXISTANT : ID {client['id_client']} - {nom_complet}")
+            self.radio_group.addButton(rb)
+            self.radio_buttons.append((rb, client['id_client']))
+            layout.addWidget(rb)
+            
+        if self.radio_buttons:
+            self.radio_buttons[0][0].setChecked(True)
+            
+        new_nom_complet = f"{new_client_data['nom']} {new_client_data['prenom']} {new_client_data['postnom']}".strip()
+        self.radio_new = QRadioButton(f"CRÉER NOUVEAU : {new_nom_complet}")
+        self.radio_group.addButton(self.radio_new)
+        layout.addWidget(self.radio_new)
+        
+        btn_layout = QHBoxLayout()
+        btn_ok = QPushButton("Valider")
+        btn_cancel = QPushButton("Annuler")
+        
+        btn_ok.clicked.connect(self.accept)
+        btn_cancel.clicked.connect(self.reject)
+        
+        btn_layout.addWidget(btn_ok)
+        btn_layout.addWidget(btn_cancel)
+        
+        layout.addLayout(btn_layout)
+        self.setLayout(layout)
+        
+    def get_selection(self):
+        if self.radio_new.isChecked():
+            return "NEW", None
+        for rb, c_id in self.radio_buttons:
+            if rb.isChecked():
+                return "EXISTING", c_id
+        return None, None
 
 
 class SalesView(QWidget):
@@ -334,16 +386,50 @@ class SalesView(QWidget):
             QMessageBox.warning(self, "Erreur", "Le panier est vide")
             return
         
-        # Créer/récupérer le client
-        client_id = create_or_get_client(
-            self.client_nom.text(),
-            self.client_prenom.text(),
-            self.client_postnom.text(),
-            self.client_phone.text()
-        )
+        # Gérer la création/sélection du client
+        phone = self.client_phone.text().strip()
+        nom = self.client_nom.text().strip()
+        prenom = self.client_prenom.text().strip()
+        postnom = self.client_postnom.text().strip()
+
+        client_id = None
+        if phone:
+            existing_clients = get_clients_by_phone(phone)
+            if existing_clients:
+                # Vérifier si les informations sont exactement les mêmes pour au moins un
+                exact_match = None
+                for c in existing_clients:
+                    c_nom = c['nom_client'] or ""
+                    c_prenom = c['prenom_client'] or ""
+                    if c_nom.lower() == nom.lower() and c_prenom.lower() == prenom.lower():
+                        exact_match = c['id_client']
+                        break
+                
+                if exact_match and len(existing_clients) == 1:
+                    # Un seul client correspond exactement, on le réutilise silencieusement
+                    client_id = exact_match
+                else:
+                    # Demander au vendeur de choisir
+                    dialog = ClientSelectionDialog(
+                        existing_clients=existing_clients,
+                        new_client_data={'nom': nom, 'prenom': prenom, 'postnom': postnom},
+                        parent=self
+                    )
+                    if dialog.exec() == QDialog.Accepted:
+                        action, selected_id = dialog.get_selection()
+                        if action == "NEW":
+                            client_id = create_client_direct(nom, prenom, postnom, phone)
+                        elif action == "EXISTING":
+                            client_id = selected_id
+                    else:
+                        return # Annulé par l'utilisateur
+            else:
+                client_id = create_client_direct(nom, prenom, postnom, phone)
+        else:
+            client_id = create_client_direct(nom, prenom, postnom, "")
         
         if not client_id:
-            QMessageBox.critical(self, "Erreur", "Erreur lors de la création du client")
+            QMessageBox.critical(self, "Erreur", "Erreur lors de la création/sélection du client")
             return
         
         # Créer la vente

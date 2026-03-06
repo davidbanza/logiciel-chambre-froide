@@ -157,6 +157,12 @@ def generate_invoice(sale_data, output_filename="facture.pdf"):
     # Build PDF
     try:
         doc.build(elements)
+        # Log du chemin du PDF
+        print(f"PDF généré: {output_filename}")
+        # Vérification explicite
+        if not os.path.exists(output_filename):
+            print(f"Erreur: PDF non trouvé après génération: {output_filename}")
+            return False
         return True
     except Exception as e:
         print(f"Erreur lors de la génération du PDF: {e}")
@@ -167,17 +173,16 @@ def open_invoice(filename):
     """Ouvre la facture PDF avec l'application par défaut"""
     import subprocess
     import sys
-    
-    if not os.path.exists(filename):
-        print(f"Le fichier {filename} n'existe pas")
+    abs_path = os.path.abspath(filename)
+    if not os.path.exists(abs_path):
+        print(f"Le fichier {abs_path} n'existe pas")
         return
-    
     try:
         if sys.platform == 'win32':
-            os.startfile(filename)
+            os.startfile(abs_path)
         elif sys.platform == 'darwin':  # macOS
-            subprocess.Popen(['open', filename])
+            subprocess.Popen(['open', abs_path])
         else:  # Linux
-            subprocess.Popen(['xdg-open', filename])
+            subprocess.Popen(['xdg-open', abs_path])
     except Exception as e:
         print(f"Erreur lors de l'ouverture du PDF: {e}")

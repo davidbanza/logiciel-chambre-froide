@@ -596,6 +596,38 @@ def get_client_by_phone(phone):
     finally:
         conn.close()
 
+def get_clients_by_phone(phone):
+    """Récupère tous les clients par téléphone"""
+    try:
+        conn = connect_db()
+        with conn.cursor() as cursor:
+            sql = "SELECT * FROM client WHERE tel_client = %s"
+            cursor.execute(sql, (phone,))
+            return cursor.fetchall()
+    except Exception as e:
+        print(f"Erreur: {e}")
+        return []
+    finally:
+        conn.close()
+
+def create_client_direct(nom, prenom, postnom="", telephone=""):
+    """Crée un client inconditionnellement"""
+    conn = None
+    try:
+        conn = connect_db()
+        with conn.cursor() as cursor:
+            sql = """INSERT INTO client (nom_client, prenom_client, postnom_client, tel_client)
+                     VALUES (%s, %s, %s, %s)"""
+            cursor.execute(sql, (nom, prenom, postnom, telephone))
+            conn.commit()
+            return cursor.lastrowid
+    except Exception as e:
+        print(f"Erreur: {e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
 def create_or_get_client(nom, prenom, postnom="", telephone=""):
     """Crée un client s'il n'existe pas, sinon le retourne"""
     conn = None
