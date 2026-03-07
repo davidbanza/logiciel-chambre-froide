@@ -1,7 +1,8 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QFormLayout,
                              QLineEdit, QComboBox, QPushButton, QLabel, QMessageBox,
                              QTableWidget, QTableWidgetItem, QSpinBox, QDateEdit, QDialog,
-                             QRadioButton, QButtonGroup)
+                             QRadioButton, QButtonGroup, QGroupBox, QTextEdit)
+from PySide6.QtCore import QDate, Qt
 from PySide6.QtCore import QDate
 from datetime import datetime
 from database import (get_all_products, get_all_payment_modes, create_sale, get_sales_by_vendor_id, get_sale_by_id, 
@@ -59,6 +60,265 @@ class ClientSelectionDialog(QDialog):
             if rb.isChecked():
                 return "EXISTING", c_id
         return None, None
+
+
+class SaleDetailsDialog(QDialog):
+    """Boîte de dialogue pour afficher les détails d'une vente"""
+    
+    def __init__(self, sale_id, parent=None):
+        super().__init__(parent)
+        self.sale_id = sale_id
+        self.sale_data = get_sale_by_id(sale_id)
+        
+        if not self.sale_data:
+            QMessageBox.warning(parent, "Erreur", "Vente non trouvée")
+            return
+        
+        self.setWindowTitle(f"Détails de la Vente #{sale_id}")
+        self.setMinimumWidth(800)
+        self.setMinimumHeight(600)
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Configure l'interface de la boîte de dialogue"""
+        layout = QVBoxLayout()
+        
+        # En-tête avec informations principales
+        header_group = QGroupBox("Informations de la Vente")
+        header_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #3498db;
+                border-radius: 5px;
+                margin-top: 1ex;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 10px 0 10px;
+            }
+        """)
+        header_layout = QFormLayout()
+        
+        # Informations de base avec couleurs
+        id_label = QLabel(f"#{self.sale_data['id_vente']}")
+        id_label.setStyleSheet("font-weight: bold; color: #e74c3c;")
+        header_layout.addRow("ID Vente :", id_label)
+        
+        header_layout.addRow("Date :", QLabel(str(self.sale_data['date_vente'])))
+        header_layout.addRow("Client :", QLabel(self.sale_data['client'] or "N/A"))
+        header_layout.addRow("Vendeur :", QLabel(self.sale_data['vendeur'] or "N/A"))
+        
+        # Mode de paiement avec couleur selon le type
+        payment_mode = self.sale_data['mode_paiement'] or "N/A"
+        payment_label = QLabel(payment_mode)
+        if payment_mode.upper() == "DETTE":
+            payment_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
+        else:
+            payment_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+        header_layout.addRow("Mode de Paiement :", payment_label)
+        
+        # Statut retrait avec couleur
+        retrait_status = self.sale_data['statut_retrait'] or "N/A"
+        retrait_label = QLabel(retrait_status)
+        if retrait_status == "IMMEDIAT":
+            retrait_label.setStyleSheet("color: #27ae60;")
+        elif retrait_status == "ULTERIEUR":
+            retrait_label.setStyleSheet("color: #f39c12;")
+        retrait_label.setStyleSheet("font-weight: bold;")
+        header_layout.addRow("Statut Retrait :", retrait_label)
+        
+        if self.sale_data['date_retrait_effective']:
+            retrait_date_label = QLabel(str(self.sale_data['date_retrait_effective']))
+            retrait_date_label.setStyleSheet("color: #3498db;")
+            header_layout.addRow("Date Retrait Effective :", retrait_date_label)
+        
+        header_group.setLayout(header_layout)
+        layout.addWidget(header_group)
+        
+        # Tableau des articles
+        articles_group = QGroupBox("Articles Vendus")
+        articles_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #27ae60;
+                border-radius: 5px;
+                margin-top: 1ex;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 10px 0 10px;
+            }
+        """)
+        articles_layout = QVBoxLayout()
+        
+        self.articles_table = QTableWidget()
+        self.articles_table.setColumnCount(4)
+        self.articles_table.setHorizontalHeaderLabels(["Produit", "Prix Unitaire", "Quantité", "Sous-total"])
+        self.articles_table.setColumnWidth(0, 300)
+        self.articles_table.setColumnWidth(1, 120)
+        self.articles_table.setColumnWidth(2, 100)
+        self.articles_table.setColumnWidth(3, 120)
+        
+        # Style du tableau
+        self.articles_table.setStyleSheet("""
+            QTableWidget {
+                gridline-color: #ddd;
+                selection-background-color: #e3f2fd;
+            }
+            QHeaderView::section {
+                background-color: #f5f5f5;
+                padding: 8px;
+                border: 1px solid #ddd;
+                font-weight: bold;
+            }
+        """)
+        
+        # Désactiver l'édition du tableau
+        self.articles_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        
+        # Remplir le tableau
+        articles = self.sale_data.get('articles', [])
+        self.articles_table.setRowCount(len(articles))
+        
+        total = 0
+        for row, article in enumerate(articles):
+            prix = article['prix_vente']
+            quantite = article['quantite']
+            subtotal = prix * quantite
+            total += subtotal
+            
+            # Produit
+            product_item = QTableWidgetItem(article['nom_pr'])
+            product_item.setToolTip(article['nom_pr'])  # Tooltip pour les noms longs
+            self.articles_table.setItem(row, 0, product_item)
+            
+            # Prix unitaire
+            price_item = QTableWidgetItem(format_currency(prix))
+            price_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.articles_table.setItem(row, 1, price_item)
+            
+            # Quantité
+            qty_item = QTableWidgetItem(str(quantite))
+            qty_item.setTextAlignment(Qt.AlignCenter)
+            self.articles_table.setItem(row, 2, qty_item)
+            
+            # Sous-total
+            subtotal_item = QTableWidgetItem(format_currency(subtotal))
+            subtotal_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.articles_table.setItem(row, 3, subtotal_item)
+        
+        articles_layout.addWidget(self.articles_table)
+        
+        # Résumé des articles
+        summary_layout = QHBoxLayout()
+        total_articles = sum(article['quantite'] for article in articles)
+        summary_label = QLabel(f"Total articles : {total_articles} | Nombre de produits différents : {len(articles)}")
+        summary_label.setStyleSheet("font-style: italic; color: #666;")
+        summary_layout.addWidget(summary_label)
+        summary_layout.addStretch()
+        articles_layout.addLayout(summary_layout)
+        
+        articles_group.setLayout(articles_layout)
+        layout.addWidget(articles_group)
+        
+        # Total avec cadre
+        total_group = QGroupBox()
+        total_group.setStyleSheet("""
+            QGroupBox {
+                border: 2px solid #27ae60;
+                border-radius: 5px;
+                background-color: #f8fff9;
+            }
+        """)
+        total_layout = QHBoxLayout()
+        total_layout.addStretch()
+        
+        total_title = QLabel("TOTAL : ")
+        total_title.setStyleSheet("font-size: 14px; font-weight: bold;")
+        total_layout.addWidget(total_title)
+        
+        total_label = QLabel(format_currency(total))
+        total_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #27ae60;")
+        total_layout.addWidget(total_label)
+        
+        total_layout.addStretch()
+        total_group.setLayout(total_layout)
+        layout.addWidget(total_group)
+        
+        # Boutons d'action
+        buttons_layout = QHBoxLayout()
+        
+        btn_print = QPushButton("🖨️ Imprimer Facture")
+        btn_print.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                font-weight: bold;
+                padding: 10px 20px;
+                border-radius: 5px;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+            QPushButton:pressed {
+                background-color: #21618c;
+            }
+        """)
+        btn_print.clicked.connect(self.print_invoice)
+        buttons_layout.addWidget(btn_print)
+        
+        buttons_layout.addStretch()
+        
+        btn_close = QPushButton("Fermer")
+        btn_close.setStyleSheet("""
+            QPushButton {
+                background-color: #95a5a6;
+                color: white;
+                font-weight: bold;
+                padding: 10px 20px;
+                border-radius: 5px;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #7f8c8d;
+            }
+            QPushButton:pressed {
+                background-color: #6c7b7d;
+            }
+        """)
+        btn_close.clicked.connect(self.accept)
+        buttons_layout.addWidget(btn_close)
+        
+        layout.addLayout(buttons_layout)
+        self.setLayout(layout)
+    
+    def print_invoice(self):
+        """Imprime la facture de la vente"""
+        try:
+            import os
+            from datetime import datetime
+            
+            # Générer la facture
+            invoice_filename = f"factures/facture_{self.sale_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            os.makedirs("factures", exist_ok=True)
+            
+            if generate_invoice(self.sale_data, invoice_filename):
+                reply = QMessageBox.question(
+                    self, 
+                    "Facture générée", 
+                    "Facture générée avec succès !\n\nVoulez-vous l'ouvrir ?",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                if reply == QMessageBox.Yes:
+                    open_invoice(invoice_filename)
+            else:
+                QMessageBox.warning(self, "Erreur", "Erreur lors de la génération de la facture")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur", f"Erreur lors de l'impression : {str(e)}")
 
 
 class SalesView(QWidget):
@@ -529,31 +789,9 @@ class SalesView(QWidget):
             self.table_daily_sales.setCellWidget(row, 5, btn_details)
 
     def show_sale_details(self, sale_id):
-        """Affiche les détails d'une vente"""
-        sale = get_sale_by_id(sale_id)
-        if not sale:
-            QMessageBox.warning(self, "Erreur", "Vente non trouvée")
-            return
-        
-        msg = f"""
-ID Vente: {sale['id_vente']}
-Date: {sale['date_vente']}
-Client: {sale['client']}
-Vendeur: {sale['vendeur']}
-Mode Paiement: {sale['mode_paiement']}
-Retrait: {sale['statut_retrait']}
-
-Articles:
-"""
-        total = 0
-        for article in sale['articles']:
-            subtotal = article['prix_vente'] * article['quantite']
-            total += subtotal
-            msg += f"\n- {article['nom_pr']}: {article['quantite']} x {format_currency(article['prix_vente'])} = {format_currency(subtotal)}"
-        
-        msg += f"\n\nTOTAL: {format_currency(total)}"
-        
-        QMessageBox.information(self, "Détails de la Vente", msg)
+        """Affiche les détails d'une vente dans une boîte de dialogue améliorée"""
+        dialog = SaleDetailsDialog(sale_id, self)
+        dialog.exec()
 
     def load_sale_for_edit(self):
         """Charge une vente pour édition (manager)"""
