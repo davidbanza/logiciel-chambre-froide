@@ -13,3 +13,4 @@
 -[x] Meme client et numero de telephone
 -[x] Trier par carton et par argent
 -[x] Gerer les retraits a posteriori
+-[x] imprimante thermique (support 56mm et 80mm avec PIL + win32print)

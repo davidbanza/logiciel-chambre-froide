@@ -7,8 +7,8 @@ from datetime import datetime
 from database import (get_all_products, get_all_payment_modes, create_sale, get_sales_by_vendor_id, get_sale_by_id, 
                       is_manager, create_debt, is_credit_payment,
                       get_clients_by_phone, create_client_direct, update_sale, get_all_users, get_all_sales_detailed)
-from invoice_generator import generate_invoice, open_invoice
-from utils import format_currency
+from invoice_generator import generate_invoice, open_invoice, print_thermal_receipt, generate_and_print_receipt
+from utils import format_currency, ask_print_options
 
 
 class ClientSelectionDialog(QDialog):
@@ -300,21 +300,50 @@ class SaleDetailsDialog(QDialog):
             import os
             from datetime import datetime
             
-            # Générer la facture
-            invoice_filename = f"factures/facture_{self.sale_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            os.makedirs("factures", exist_ok=True)
+            # Demander les options d'impression
+            print_options = ask_print_options(self, "Impression de facture", "Choisissez les options d'impression pour cette vente :")
+            if print_options is None:  # Annulé
+                return
             
-            if generate_invoice(self.sale_data, invoice_filename):
+            success_messages = []
+            error_messages = []
+            
+            # Générer PDF si demandé
+            pdf_filename = None
+            if print_options['print_pdf']:
+                pdf_filename = f"factures/facture_{self.sale_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                os.makedirs("factures", exist_ok=True)
+                
+                if generate_invoice(self.sale_data, pdf_filename):
+                    success_messages.append(f"✓ PDF généré: {pdf_filename}")
+                else:
+                    error_messages.append("❌ Erreur lors de la génération du PDF")
+            
+            # Imprimer sur thermique si demandé
+            if print_options['print_thermal']:
+                thermal_width = print_options.get('thermal_width', '80mm')
+                if print_thermal_receipt(self.sale_data, thermal_width):
+                    success_messages.append(f"✓ Reçu thermique imprimé ({thermal_width})")
+                else:
+                    error_messages.append("❌ Erreur lors de l'impression thermique")
+            
+            # Afficher les résultats
+            if success_messages:
+                message = "Impression terminée :\n\n" + "\n".join(success_messages)
+                if error_messages:
+                    message += "\n\nErreurs :\n" + "\n".join(error_messages)
+                
                 reply = QMessageBox.question(
                     self, 
-                    "Facture générée", 
-                    "Facture générée avec succès !\n\nVoulez-vous l'ouvrir ?",
+                    "Impression terminée", 
+                    message + "\n\nVoulez-vous ouvrir le PDF ?",
                     QMessageBox.Yes | QMessageBox.No
-                )
-                if reply == QMessageBox.Yes:
-                    open_invoice(invoice_filename)
+                ) if pdf_filename else QMessageBox.information(self, "Impression terminée", message)
+                
+                if pdf_filename and reply == QMessageBox.Yes:
+                    open_invoice(pdf_filename)
             else:
-                QMessageBox.warning(self, "Erreur", "Erreur lors de la génération de la facture")
+                QMessageBox.warning(self, "Erreur", "Aucune impression n'a réussi :\n" + "\n".join(error_messages))
                 
         except Exception as e:
             QMessageBox.critical(self, "Erreur", f"Erreur lors de l'impression : {str(e)}")
@@ -926,7 +955,7 @@ class SalesView(QWidget):
             else:
                 QMessageBox.warning(self, "Avertissement", f"Vente #{sale_id} créée mais la dette n'a pas pu être enregistrée !")
         
-        # Générer la facture
+        # Générer la facture avec options d'impression
         sale_data = get_sale_by_id(sale_id)
         if sale_data:
             # Ajouter info paiement si crédit
@@ -935,22 +964,50 @@ class SalesView(QWidget):
                 sale_data['montant_paye'] = 0
                 sale_data['montant_restant'] = total
             
-            # Préparer les données pour la facture
-            invoice_filename = f"factures/facture_{sale_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            # Demander les options d'impression
+            print_options = ask_print_options(self, "Impression de facture", "Vente enregistrée avec succès !\n\nChoisissez les options d'impression :")
             
-            # Créer le dossier si nécessaire
-            import os
-            os.makedirs("factures", exist_ok=True)
-            
-            if generate_invoice(sale_data, invoice_filename):
-                reply = QMessageBox.question(
-                    self, 
-                    "Facture générée", 
-                    "Facture générée avec succès !\n\nVoulez-vous l'ouvrir ?",
-                    QMessageBox.Yes | QMessageBox.No
-                )
-                if reply == QMessageBox.Yes:
-                    open_invoice(invoice_filename)
+            if print_options is not None:  # Pas annulé
+                success_messages = []
+                error_messages = []
+                
+                # Générer PDF si demandé
+                pdf_filename = None
+                if print_options['print_pdf']:
+                    pdf_filename = f"factures/facture_{sale_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                    import os
+                    os.makedirs("factures", exist_ok=True)
+                    
+                    if generate_invoice(sale_data, pdf_filename):
+                        success_messages.append(f"✓ PDF généré: {pdf_filename}")
+                    else:
+                        error_messages.append("❌ Erreur lors de la génération du PDF")
+                
+                # Imprimer sur thermique si demandé
+                if print_options['print_thermal']:
+                    thermal_width = print_options.get('thermal_width', '80mm')
+                    if print_thermal_receipt(sale_data, thermal_width):
+                        success_messages.append(f"✓ Reçu thermique imprimé ({thermal_width})")
+                    else:
+                        error_messages.append("❌ Erreur lors de l'impression thermique")
+                
+                # Afficher les résultats
+                if success_messages:
+                    message = "Impression terminée :\n\n" + "\n".join(success_messages)
+                    if error_messages:
+                        message += "\n\nErreurs :\n" + "\n".join(error_messages)
+                    
+                    reply = QMessageBox.question(
+                        self, 
+                        "Impression terminée", 
+                        message + "\n\nVoulez-vous ouvrir le PDF ?",
+                        QMessageBox.Yes | QMessageBox.No
+                    ) if pdf_filename else QMessageBox.information(self, "Impression terminée", message)
+                    
+                    if pdf_filename and reply == QMessageBox.Yes:
+                        open_invoice(pdf_filename)
+                elif error_messages:
+                    QMessageBox.warning(self, "Erreur d'impression", "Erreurs lors de l'impression :\n" + "\n".join(error_messages))
         
         # Message de confirmation finalisé
         if is_credit_payment(payment_mode_id):
