@@ -34,6 +34,28 @@ def format_currency(amount, currency="FC"):
         return f"0,00 {currency}"
 
 
+def resource_path(relative_path: str) -> str:
+    """
+    Retourne le chemin absolu d'une ressource, compatible avec PyInstaller.
+
+    Lorsque l'application est empaquetée avec PyInstaller, les fichiers de
+    données sont extraits dans un répertoire temporaire accessible via
+    ``sys._MEIPASS``. Cette fonction gère ce cas en renvoyant soit le
+    chemin local (mode développement), soit le chemin dans le bundle.
+
+    Args:
+        relative_path: chemin relatif à la racine du projet (ex: "images/logo.png")
+
+    Returns:
+        Chemin absolu vers la ressource.
+    """
+    import sys
+    import os
+
+    base_path = getattr(sys, '_MEIPASS', os.path.abspath('.'))
+    return os.path.join(base_path, relative_path)
+
+
 def ask_print_options(parent=None, title="Options d'impression", message="Choisissez les options d'impression :"):
     """
     Demande à l'utilisateur les options d'impression (PDF et/ou thermique)

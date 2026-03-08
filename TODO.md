@@ -14,3 +14,4 @@
 -[x] Trier par carton et par argent
 -[x] Gerer les retraits a posteriori
 -[x] imprimante thermique (support 56mm et 80mm avec PIL + win32print)
+-[x] Compilation PyInstaller avec script PowerShell et assets

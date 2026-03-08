@@ -2,3 +2,13 @@ __pycache__
 venv
 .env
 factures
+
+# Compilation PyInstaller
+build/
+dist/
+*.spec
+*.exe
+
+# OS
+.DS_Store
+Thumbs.db

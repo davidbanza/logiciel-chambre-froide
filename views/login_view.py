@@ -8,8 +8,9 @@ class LoginView(QWidget):
 
     def __init__(self):
         super().__init__()
+        from utils import resource_path
         # application icon (also appears on the login window)
-        self.setWindowIcon(QIcon("images/logo.png"))
+        self.setWindowIcon(QIcon(resource_path("images/logo.png")))
         self.setWindowTitle("Connexion - Gestion Chambre Froide")
         self.setFixedSize(380, 450)
         self.setup_ui()
@@ -21,7 +22,8 @@ class LoginView(QWidget):
 
         # logo image at the top
         logo_label = QLabel()
-        pixmap = QPixmap("images/logo.png")
+        from utils import resource_path
+        pixmap = QPixmap(resource_path("images/logo.png"))
         if not pixmap.isNull():
             logo_label.setPixmap(pixmap.scaled(350, 350, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         logo_label.setAlignment(Qt.AlignCenter)
