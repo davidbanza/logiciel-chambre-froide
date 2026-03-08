@@ -9,6 +9,7 @@
 -[x] La Gestion des dettes doit etre ameliore
 -[x] Trier les dettes par mois
 -[x] Modification des dettes chez le manager
--[ ] Trier par carton et par argent et gerer les retraits a posteriori
--[ ] Meme client et numero de telephone
--[ ] Statistiques generales par mois et filtre
+-[x] Statistiques generales par mois et filtre
+-[x] Meme client et numero de telephone
+-[x] Trier par carton et par argent
+-[ ] Gerer les retraits a posteriori
