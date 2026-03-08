@@ -8,6 +8,7 @@ from views.reports_view import ReportsView
 from views.debts_view import DebtsView
 from views.stock_view import StockView
 from views.sales_history_view import SalesHistoryView
+from views.withdrawals_view import WithdrawalsView
 from database import is_manager
 
 class MainView(QMainWindow):
@@ -116,10 +117,14 @@ class MainView(QMainWindow):
         btn_my_sales = QPushButton("Mes Ventes")
         btn_my_sales.setProperty('class', 'sideMenu')
         btn_my_sales.clicked.connect(lambda checked=False, b=btn_my_sales: (self._highlight_side_button(b), self.show_my_sales_history()))
+        btn_withdrawals = QPushButton("Gestion des Retraits")
+        btn_withdrawals.setProperty('class', 'sideMenu')
+        btn_withdrawals.clicked.connect(lambda checked=False, b=btn_withdrawals: (self._highlight_side_button(b), self.show_withdrawals_view()))
         
         self.side_menu.addWidget(btn_nv)
         self.side_menu.addWidget(btn_hist)
         self.side_menu.addWidget(btn_my_sales)
+        self.side_menu.addWidget(btn_withdrawals)
         self.side_menu.addStretch()
         # auto-trigger first option
         self._activate_first_side_item()
@@ -202,6 +207,12 @@ class MainView(QMainWindow):
         self.my_sales_page = SalesHistoryView(self.user)
         self.content_stack.addWidget(self.my_sales_page)
         self.content_stack.setCurrentWidget(self.my_sales_page)
+
+    def show_withdrawals_view(self):
+        """Affiche la vue de gestion des retraits programmés."""
+        self.withdrawals_page = WithdrawalsView(self.user)
+        self.content_stack.addWidget(self.withdrawals_page)
+        self.content_stack.setCurrentWidget(self.withdrawals_page)
 
     def show_debts_view(self):
         """Affiche la vue de gestion des dettes"""

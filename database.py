@@ -428,6 +428,54 @@ def get_all_sales_detailed():
     finally:
         conn.close()
 
+def get_pending_withdrawals(status_filter="ULTERIEUR", date_from=None, vendor_id=None):
+    """Récupère les retraits en attente ou tous les retraits selon les filtres"""
+    try:
+        conn = connect_db()
+        with conn.cursor() as cursor:
+            sql = """SELECT 
+                        v.id_vente,
+                        v.date_vente,
+                        v.statut_retrait,
+                        v.date_retrait_effective,
+                        v.id_ut as id_vendeur,
+                        CONCAT(u.prenom_ut, ' ', u.nom_ut) as vendeur,
+                        CONCAT(c.nom_client, ' ', c.prenom_client) as client,
+                        SUM(dv.prix_vente * dv.quantite) as montant_total
+                     FROM vente v
+                     LEFT JOIN utilisateur u ON v.id_ut = u.id_ut
+                     LEFT JOIN client c ON v.id_client = c.id_client
+                     LEFT JOIN detail_vente dv ON v.id_vente = dv.id_vente
+                     WHERE 1=1"""
+            
+            params = []
+            
+            # Filtre par statut
+            if status_filter == "ULTERIEUR":
+                sql += " AND v.statut_retrait = 'ULTERIEUR'"
+            # Sinon on récupère tous les retraits
+            
+            # Filtre par date
+            if date_from:
+                sql += " AND v.date_vente >= %s"
+                params.append(date_from)
+            
+            # Filtre par vendeur
+            if vendor_id:
+                sql += " AND v.id_ut = %s"
+                params.append(vendor_id)
+            
+            sql += " GROUP BY v.id_vente, v.date_vente, v.statut_retrait, v.date_retrait_effective, v.id_ut, vendeur, client"
+            sql += " ORDER BY v.date_retrait_effective DESC, v.date_vente DESC"
+            
+            cursor.execute(sql, params)
+            return cursor.fetchall()
+    except Exception as e:
+        print(f"Erreur: {e}")
+        return []
+    finally:
+        conn.close()
+
 def get_sales_by_date_range(start_date, end_date):
     """Récupère les ventes dans une plage de dates"""
     try:

@@ -12,4 +12,4 @@
 -[x] Statistiques generales par mois et filtre
 -[x] Meme client et numero de telephone
 -[x] Trier par carton et par argent
--[ ] Gerer les retraits a posteriori
+-[x] Gerer les retraits a posteriori
