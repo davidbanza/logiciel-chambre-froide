@@ -281,7 +281,20 @@ def print_thermal_receipt(sale_data, printer_width="80mm"):
 
     # En-tête
     add_centered("=" * (max_chars // 2))
-    add_centered("SOCIETE CAMELEON GABRIELLA <<SOCAGA>>")
+    add_centered("SOCIETE CAMELEON GABRIELLA", True)
+    add_centered("SOCAGA en sigle", True)
+    add_centered("N. RCCM: CD/KND/RCCM/21-B-788")
+    add_centered("ID. NAT: N. 14-F4300-N04828N")
+    add_centered("N. IMPOT: A2202409T")
+    add_centered("Adresse: N.03, Av. Potopoto, Q/Kasuku")
+    add_centered("C/Kasuku, Ville de Kindu")
+    add_centered("Province du Maniema, RDC")
+    add_centered("0815100000, 0993200000")
+    add_centered("0997800000, 0840000031")
+    add_centered("0855555483")
+    add_centered("mussagabriel85@gmail.com")
+    add_centered("mussagabriel82@gmail.com")
+    add_centered("=" * (max_chars // 2))
     add_centered("REÇU DE VENTE")
     add_centered("=" * (max_chars // 2))
 
@@ -297,8 +310,10 @@ def print_thermal_receipt(sale_data, printer_width="80mm"):
     # Séparateur
     add_centered("-" * max_chars)
 
-    # En-têtes des articles
-    header_line = f"{'Article':<15} {'Qté':>3} {'Prix':>8} {'Total':>8}"
+    # En-têtes des articles avec colonnes bien définies
+    # Largeurs: Article(20) | Qté(4) | Prix(10) | Total(10) = 44 chars + 3 séparateurs
+    col_widths = {'article': 20, 'qty': 4, 'price': 10, 'total': 10}
+    header_line = f"{'Article':<{col_widths['article']}}|{'Qté':>{col_widths['qty']}}|{'Prix':>{col_widths['price']}}|{'Total':>{col_widths['total']}}"
     add_left(header_line[:max_chars], True)
     add_centered("-" * max_chars)
 
@@ -307,15 +322,16 @@ def print_thermal_receipt(sale_data, printer_width="80mm"):
     total_amount = 0
 
     for article in articles:
-        nom = article.get('nom_pr', 'N/A')[:15]  # Tronquer si trop long
-        quantite = str(int(article.get('quantite', 0)))
-        prix = format_currency(float(article.get('prix_vente', 0)))
+        # Tronquer et formater chaque colonne avec largeur fixe
+        nom = str(article.get('nom_pr', 'N/A'))[:col_widths['article']].ljust(col_widths['article'])
+        quantite = str(int(article.get('quantite', 0))).rjust(col_widths['qty'])
+        prix = format_currency(float(article.get('prix_vente', 0))).rjust(col_widths['price'])
         total = float(article.get('prix_vente', 0)) * int(article.get('quantite', 0))
         total_amount += total
-        total_str = format_currency(total)
+        total_str = format_currency(total).rjust(col_widths['total'])
 
-        # Formater la ligne
-        line = f"{nom:<15} {quantite:>3} {prix:>8} {total_str:>8}"
+        # Formater la ligne avec colonnes séparées
+        line = f"{nom}|{quantite}|{prix}|{total_str}"
         add_left(line[:max_chars])
 
     # Séparateur

@@ -87,12 +87,12 @@ def ask_print_options(parent=None, title="Options d'impression", message="Choisi
     
     # PDF
     pdf_checkbox = QCheckBox("Générer PDF")
-    pdf_checkbox.setChecked(True)  # PDF activé par défaut
+    pdf_checkbox.setChecked(False)  # PDF désactivé par défaut
     options_layout.addWidget(pdf_checkbox)
     
     # Thermique
     thermal_checkbox = QCheckBox("Imprimer sur thermique")
-    thermal_checkbox.setChecked(False)
+    thermal_checkbox.setChecked(True)  # Thermique activé par défaut
     options_layout.addWidget(thermal_checkbox)
     
     # Largeur thermique (activé seulement si thermique coché)
