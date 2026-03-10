@@ -152,7 +152,13 @@ class DebtsView(QWidget):
         filters_layout.addStretch()
         layout.addLayout(filters_layout)
         layout.addSpacing(10)
-        
+
+        # Bouton imprimer listing dettes
+        btn_print_listing = QPushButton("🖨️ Imprimer Listing Dettes (PDF)")
+        btn_print_listing.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; padding: 8px;")
+        btn_print_listing.clicked.connect(self.print_debt_listing_pdf)
+        layout.addWidget(btn_print_listing)
+
         # Tableau des dettes
         self.table_manage_debts = QTableWidget()
         self.table_manage_debts.setColumnCount(7)
@@ -166,13 +172,78 @@ class DebtsView(QWidget):
         self.table_manage_debts.setColumnWidth(4, 100)
         self.table_manage_debts.setColumnWidth(5, 120)
         self.table_manage_debts.setColumnWidth(6, 200)
-        
+
         layout.addWidget(self.table_manage_debts)
-        
+
         self.tab_manage_debts.setLayout(layout)
-        
+
         # Actualiser le tableau au démarrage
         self.refresh_manage_debts()
+
+    def print_debt_listing_pdf(self):
+        """Imprime le listing des dettes en PDF avec en-têtes"""
+        from reportlab.lib.pagesizes import letter
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        import datetime
+        import os
+
+        debts = get_all_debts()
+        status_filter = self.manage_status_filter.currentText()
+        start_date = self.manage_start_date.date()
+        end_date = self.manage_end_date.date()
+        filtered_debts = []
+        for debt in debts:
+            if status_filter != "TOUS" and debt['statut_dette'] != status_filter:
+                continue
+            debt_date = QDate.fromString(str(debt['date_echeance']), "yyyy-MM-dd")
+            if not (start_date <= debt_date <= end_date):
+                continue
+            filtered_debts.append(debt)
+
+        # Préparer les données du tableau
+        table_data = [["N.", "Noms Client", "Date", "N.carton", "Montant", "Payé", "Reste"]]
+        for idx, debt in enumerate(filtered_debts, 1):
+            table_data.append([
+                str(idx),
+                debt.get('client', 'N/A'),
+                str(debt.get('date_echeance', '')),  # ou date de création
+                str(debt.get('n_carton', '')),  # n_carton doit exister dans la structure
+                format_currency(debt.get('montant_total_dette', 0)),
+                format_currency(get_total_paid_for_debt(debt['id_dette'])),
+                format_currency(get_remaining_amount_for_debt(debt['id_dette'])),
+            ])
+
+        # Créer le PDF
+        os.makedirs("factures", exist_ok=True)
+        filename = f"factures/listing_dettes_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        doc = SimpleDocTemplate(filename, pagesize=letter)
+        elements = []
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, textColor=colors.blue, alignment=1)
+        elements.append(Paragraph("Listing des Dettes Clients", title_style))
+        elements.append(Spacer(1, 0.2*inch))
+        table = Table(table_data, colWidths=[0.5*inch, 2*inch, 1.2*inch, 1*inch, 1*inch, 1*inch, 1*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.blue),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('WORDWRAP', (0, 0), (-1, -1), 'ON'),
+        ]))
+        elements.append(table)
+        elements.append(Spacer(1, 0.2*inch))
+        elements.append(Paragraph(f"Généré le {datetime.datetime.now().strftime('%d/%m/%Y à %H:%M:%S')}", styles['Normal']))
+        try:
+            doc.build(elements)
+            QMessageBox.information(self, "Listing Dettes PDF", f"PDF généré avec succès :\n{filename}\nVoulez-vous l'ouvrir ?")
+            open_invoice(filename)
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur PDF", f"Erreur lors de la génération du PDF : {str(e)}")
 
     def reset_manage_filters(self):
         """Remet les filtres de gestion des dettes à leurs valeurs par défaut"""
