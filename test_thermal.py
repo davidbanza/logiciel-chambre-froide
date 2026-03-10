@@ -88,7 +88,7 @@ def test_with_real_data():
         test_thermal_printing()
 
 if __name__ == "__main__":
-    print("🖨️  Testeur d'impression thermique - Chambre Froide")
+    print("🖨️  Testeur d'impression thermique - SOCAGA")
     print("=" * 50)
 
     if len(sys.argv) > 1 and sys.argv[1] == "--real":
