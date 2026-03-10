@@ -194,7 +194,17 @@ class WithdrawalsView(QWidget):
             self.table_withdrawals.setCellWidget(row, 7, action_widget)
 
     def mark_withdrawal_done(self, sale_id, row_num):
-        """Marque un retrait comme effectué"""
+        """Marque un retrait comme effectué après confirmation"""
+        # demander confirmation
+        reply = QMessageBox.question(
+            self,
+            "Confirmation",
+            f"Êtes-vous sûr de vouloir marquer le retrait de la vente #{sale_id} comme effectué ?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return  # l'utilisateur a annulé
+
         try:
             # Mettre à jour le retrait à IMMEDIAT avec la date actuelle
             if update_sale(sale_id, statut_retrait="IMMEDIAT", date_retrait=QDate.currentDate().toString("yyyy-MM-dd")):
