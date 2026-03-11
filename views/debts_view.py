@@ -68,12 +68,6 @@ class DebtsView(QWidget):
         # Filtres
         filters_layout = QHBoxLayout()
         
-        self.filter_type = QComboBox()
-        self.filter_type.addItems(["TOUS", "ARGENT", "CARTONS"])
-        self.filter_type.currentTextChanged.connect(self.refresh_debtors)
-        filters_layout.addWidget(QLabel("Type :"))
-        filters_layout.addWidget(self.filter_type)
-        
         self.filter_status = QComboBox()
         self.filter_status.addItems(["NON_SOLDE", "SOLDE", "TOUS"])
         self.filter_status.currentTextChanged.connect(self.refresh_debtors)
@@ -371,16 +365,12 @@ class DebtsView(QWidget):
         debts = get_all_debts()
         
         # Appliquer les filtres
-        type_filter = self.filter_type.currentText()
         status_filter = self.filter_status.currentText()
         client_name_filter = self.filter_client_name.text().strip().lower()
         client_phone_filter = self.filter_client_phone.text().strip().lower()
         
         filtered_debts = []
         for debt in debts:
-            # Filtre par type
-            if type_filter != "TOUS" and debt['type_dette'] != type_filter:
-                continue
             # Filtre par statut
             if status_filter != "TOUS" and debt['statut_dette'] != status_filter:
                 continue
@@ -466,38 +456,31 @@ class DebtsView(QWidget):
             print(f"\nRangée {row}:")
             
             # Colonne 0: ID Dette
-            print(f"  Col 0: ID = {debt['id_dette']}")
             self.table_manage_debts.setItem(row, 0, QTableWidgetItem(str(debt['id_dette'])))
             
             # Colonne 1: Client
-            print(f"  Col 1: Client = {debt.get('client', 'N/A')}")
             self.table_manage_debts.setItem(row, 1, QTableWidgetItem(debt.get('client') or "N/A"))
             
             # Colonne 2: Total
             total = float(debt.get('montant_total_dette', 0))
-            print(f"  Col 2: Total = {total}")
             col2_item = QTableWidgetItem(format_currency(total))
             self.table_manage_debts.setItem(row, 2, col2_item)
             
             # Colonne 3: Reste à payer
             remaining = float(get_remaining_amount_for_debt(debt['id_dette']))
-            print(f"  Col 3: Reste à payer = {remaining}")
             remaining_item = QTableWidgetItem(format_currency(remaining))
             remaining_item.setForeground(Qt.red if remaining > 0 else Qt.green)
             self.table_manage_debts.setItem(row, 3, remaining_item)
             
             # Colonne 4: Statut
-            print(f"  Col 4: Statut = {debt.get('statut_dette', 'N/A')}")
             status_item = QTableWidgetItem(debt.get('statut_dette', "N/A"))
             status_item.setForeground(Qt.red if debt.get('statut_dette') == "NON_SOLDE" else Qt.green)
             self.table_manage_debts.setItem(row, 4, status_item)
             
             # Colonne 5: Date Échéance
-            print(f"  Col 5: Date = {debt.get('date_echeance', 'N/A')}")
             self.table_manage_debts.setItem(row, 5, QTableWidgetItem(str(debt.get('date_echeance', ""))))
             
             # Colonne 6: Actions
-            print(f"  Col 6: Actions (boutons)")
             action_widget = QWidget()
             action_layout = QHBoxLayout()
             
