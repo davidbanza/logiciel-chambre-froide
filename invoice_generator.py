@@ -3,12 +3,12 @@ Utilitaire pour générer des factures PDF avec ReportLab et impression thermiqu
 """
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from datetime import datetime
 import os
-from utils import format_currency
+from utils import format_currency, resource_path
 
 # Imports pour l'impression thermique
 try:
@@ -20,6 +20,60 @@ try:
 except ImportError:
     PIL_AVAILABLE = False
     print("PIL/win32print non disponibles - impression thermique désactivée")
+
+
+def image_to_ascii_art(image_path, width=48):
+    """
+    Convertit une image en ASCII art pour l'impression thermique
+    
+    Args:
+        image_path: Chemin vers l'image
+        width: Largeur en caractères
+    
+    Returns:
+        Liste de chaînes représentant l'ASCII art
+    """
+    if not PIL_AVAILABLE or not os.path.exists(image_path):
+        return []
+    
+    try:
+        img = Image.open(image_path)
+        # Convertir en niveaux de gris
+        img = img.convert('L')
+        # Redimensionner
+        aspect_ratio = img.height / img.width
+        height = int(width * aspect_ratio * 0.55)  # 0.55 pour compenser la forme des caractères
+        img = img.resize((width, height), Image.Resampling.LANCZOS)
+        
+        # Caractères ASCII du plus clair au plus foncé
+        ascii_chars = ' .:-=+*#%@'
+        
+        ascii_art = []
+        pixels = img.getdata()
+        pixel_count = 0
+        
+        for pixel in pixels:
+            # Normaliser le pixel à un index ASCII
+            ascii_index = min(len(ascii_chars) - 1, int(pixel / 255 * (len(ascii_chars) - 1)))
+            ascii_art.append(ascii_chars[ascii_index])
+            pixel_count += 1
+            
+            if pixel_count % width == 0:
+                ascii_art.append('\n')
+        
+        return ''.join(ascii_art).strip().split('\n')
+    except Exception as e:
+        print(f"Erreur lors de la conversion de l'image en ASCII: {e}")
+        return []
+
+
+def get_logo_path():
+    """Retourne le chemin du logo compatible avec PyInstaller"""
+    logo_path = resource_path('images/logo.jpeg')
+    if os.path.exists(logo_path):
+        return logo_path
+    return None
+
 
 
 def generate_invoice(sale_data, output_filename="facture.pdf"):
@@ -42,6 +96,20 @@ def generate_invoice(sale_data, output_filename="facture.pdf"):
     doc = SimpleDocTemplate(output_filename, pagesize=letter)
     elements = []
     styles = getSampleStyleSheet()
+    
+    # Ajouter le logo en haut au centre
+    logo_path = get_logo_path()
+    if logo_path:
+        try:
+            logo = RLImage(logo_path, width=1.5*inch, height=1.5*inch)
+            logo_table = Table([[logo]], colWidths=[6*inch])
+            logo_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ]))
+            elements.append(logo_table)
+            elements.append(Spacer(1, 0.1*inch))
+        except Exception as e:
+            print(f"Erreur lors de l'ajout du logo: {e}")
     
     # Title
     title_style = ParagraphStyle(
@@ -281,6 +349,15 @@ def print_thermal_receipt(sale_data, printer_width="80mm"):
 
     # En-tête
     add_centered("=" * (max_chars // 2))
+    
+    # Ajouter le logo ASCII art
+    logo_path = get_logo_path()
+    if logo_path:
+        ascii_logo = image_to_ascii_art(logo_path, width=max_chars - 4)
+        for line in ascii_logo:
+            add_centered(line)
+        add_centered("")
+    
     add_centered("SOCIETE CAMELEON GABRIELLA", True)
     add_centered("SOCAGA en sigle", True)
     add_centered("N. RCCM: CD/KND/RCCM/21-B-788")
