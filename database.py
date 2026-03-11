@@ -1,5 +1,6 @@
 import pymysql
 import bcrypt
+import os
 
 def connect_db():
     return pymysql.connect(
@@ -9,6 +10,93 @@ def connect_db():
         database='chambre_froide',
         cursorclass=pymysql.cursors.DictCursor
     )
+
+def connect_db_without_db():
+    """Connexion sans spécifier la base de données (pour créer la BDD)"""
+    return pymysql.connect(
+        host='localhost',
+        user='root',
+        password='',
+        cursorclass=pymysql.cursors.DictCursor
+    )
+
+def initialize_database():
+    """Initialise la base de données si elle n'existe pas"""
+    try:
+        # Vérifie si la base de données existe
+        conn = connect_db_without_db()
+        with conn.cursor() as cursor:
+            cursor.execute("SHOW DATABASES LIKE 'chambre_froide'")
+            if cursor.fetchone():
+                print("✓ Base de données 'chambre_froide' existe déjà")
+                conn.close()
+                return
+        
+        print("Creating database 'chambre_froide'...")
+        
+        # Exécute le schema.sql
+        schema_path = os.path.join(os.path.dirname(__file__), 'base_des_donnees', 'schema.sql')
+        
+        if not os.path.exists(schema_path):
+            print(f"❌ Erreur : {schema_path} non trouvé")
+            conn.close()
+            return
+        
+        with open(schema_path, 'r', encoding='utf-8') as f:
+            schema_content = f.read()
+        
+        # Exécute chaque commande du schema
+        with conn.cursor() as cursor:
+            # Split par ';' et exécute chaque statement
+            statements = [stmt.strip() for stmt in schema_content.split(';') if stmt.strip()]
+            for statement in statements:
+                try:
+                    cursor.execute(statement)
+                except Exception as e:
+                    print(f"Erreur lors de l'exécution : {statement[:50]}... - {str(e)}")
+            
+            conn.commit()
+        
+        print("✓ Base de données créée avec succès")
+        conn.close()
+        
+        # Insère les données initiales
+        print("Insertion des données initiales...")
+        initialize_data()
+        print("✓ Données initiales insérées")
+        
+    except Exception as e:
+        print(f"❌ Erreur lors de l'initialisation : {str(e)}")
+
+def initialize_data():
+    """Insère les données initiales dans la base de données"""
+    try:
+        conn = connect_db()
+        with conn.cursor() as cursor:
+            # Insère les rôles
+            cursor.execute("INSERT INTO role_utilisateur (libelle) VALUES ('MANAGER')")
+            cursor.execute("INSERT INTO role_utilisateur (libelle) VALUES ('VENDEUR')")
+            
+            # Insère les types de produits
+            cursor.execute("INSERT INTO type_produit(libelle_type) VALUES ('POISSON'), ('POULET')")
+            
+            # Insère les modes de paiement
+            cursor.execute("INSERT INTO mode_paiement(libelle_mode) VALUES ('CASH'), ('DETTE')")
+            
+            # Insère l'administrateur par défaut
+            hashed_pwd = hash_password("12345")
+            cursor.execute("""
+                INSERT INTO utilisateur (prenom_ut, nom_ut, tel_ut, mot_de_passe, statut, id_role)
+                VALUES ('David', 'Banza', '0812222222', %s, 'ACTIF', 1)
+            """, (hashed_pwd,))
+            
+            conn.commit()
+    except pymysql.IntegrityError:
+        print("⚠ Les données initiales existent déjà")
+    except Exception as e:
+        print(f"❌ Erreur lors de l'insertion des données : {str(e)}")
+    finally:
+        conn.close()
 
 def hash_password(password):
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')

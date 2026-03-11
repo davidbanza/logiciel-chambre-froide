@@ -3,6 +3,7 @@ from PySide6.QtWidgets import QApplication
 from views.login_view import LoginView # Importez votre classe Login
 from PySide6.QtGui import QIcon
 from views.main_view import MainView
+from database import initialize_database
 
 class AppController:
     def __init__(self):
@@ -15,6 +16,9 @@ class AppController:
         self.main_app.show()
 
 if __name__ == "__main__":
+    # Initialise la base de données avant de démarrer l'application
+    initialize_database()
+    
     app = QApplication(sys.argv)
     # global application icon (taskbar, window headers)
     from utils import resource_path

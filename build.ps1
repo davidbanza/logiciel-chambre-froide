@@ -60,9 +60,12 @@ if (Test-Path $BUILD_DIR) {
 Write-Host ""
 Write-Host "4. Creation du fichier spec PyInstaller..." -ForegroundColor Yellow
 
-# lorsque l'on insère le chemin de l'icône dans le spec python, les
+# lorsque l'on insère des chemins dans le spec python, les
 # backslashes doivent être doublés pour éviter les escape sequences
-$iconLiteral = $ICON_PATH -replace '\\','\\\\'
+# on prépare donc des littéraux pour le script principal et le dossier
+$iconLiteral    = $ICON_PATH    -replace '\\','\\\\'
+$mainLiteral    = $MAIN_SCRIPT -replace '\\','\\\\'
+$projectLiteral = $PROJECT_ROOT -replace '\\','\\\\'
 
 $specContent = @"
 # -*- mode: python ; coding: utf-8 -*-
@@ -70,8 +73,8 @@ $specContent = @"
 block_cipher = None
 
 a = Analysis(
-    ['$MAIN_SCRIPT'],
-    pathex=['$PROJECT_ROOT'],
+    ["$mainLiteral"],
+    pathex=["$projectLiteral"],
     binaries=[],
     datas=[
         ('images', 'images'),                    # Logo et assets graphiques
@@ -135,7 +138,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=r'$iconLiteral',  # icône fournie par la variable PowerShell, en raw string
+    icon=r"$iconLiteral",  # icône fournie par la variable PowerShell, en raw string
 )
 "@
 
