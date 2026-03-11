@@ -10,7 +10,7 @@ class LoginView(QWidget):
         super().__init__()
         from utils import resource_path
         # application icon (also appears on the login window)
-        self.setWindowIcon(QIcon(resource_path("images/logo.png")))
+        self.setWindowIcon(QIcon(resource_path("images/logo.jpeg")))
         self.setWindowTitle("Connexion - Gestion SOCIETE CAMELEON GABRIELLA <<SOCAGA>>")
         self.setFixedSize(380, 450)
         self.setup_ui()
@@ -23,7 +23,7 @@ class LoginView(QWidget):
         # logo image at the top
         logo_label = QLabel()
         from utils import resource_path
-        pixmap = QPixmap(resource_path("images/logo.png"))
+        pixmap = QPixmap(resource_path("images/logo.jpeg"))
         if not pixmap.isNull():
             logo_label.setPixmap(pixmap.scaled(350, 350, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         logo_label.setAlignment(Qt.AlignCenter)

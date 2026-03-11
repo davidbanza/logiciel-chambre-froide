@@ -22,6 +22,6 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     # global application icon (taskbar, window headers)
     from utils import resource_path
-    app.setWindowIcon(QIcon(resource_path("images/logo.png")))
+    app.setWindowIcon(QIcon(resource_path("images/logo.jpeg")))
     controller = AppController()
     sys.exit(app.exec())

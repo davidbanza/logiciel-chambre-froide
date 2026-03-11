@@ -17,7 +17,7 @@ class MainView(QMainWindow):
         self.user = user
         # set the same icon for the main window (in case app icon isn't inherited)
         from utils import resource_path
-        self.setWindowIcon(QIcon(resource_path("images/logo.png")))
+        self.setWindowIcon(QIcon(resource_path("images/logo.jpeg")))
         # [cite_start]Utilisation du nom et statut récupérés de la DB [cite: 14, 16]
         self.setWindowTitle(f"SOCIETE CAMELEON GABRIELLA <<SOCAGA>> - {user['prenom_ut']} ({user['statut']})")
         self.resize(1200, 800)
