@@ -106,49 +106,6 @@ def build_invoice_filename(storage_path, base_filename):
 
 
 
-def image_to_ascii_art(image_path, width=48):
-    """
-    Convertit une image en ASCII art pour l'impression thermique
-    
-    Args:
-        image_path: Chemin vers l'image
-        width: Largeur en caractères
-    
-    Returns:
-        Liste de chaînes représentant l'ASCII art
-    """
-    if not PIL_AVAILABLE or not os.path.exists(image_path):
-        return []
-    
-    try:
-        img = Image.open(image_path)
-        # Convertir en niveaux de gris
-        img = img.convert('L')
-        # Redimensionner
-        aspect_ratio = img.height / img.width
-        height = int(width * aspect_ratio * 0.55)  # 0.55 pour compenser la forme des caractères
-        img = img.resize((width, height), Image.Resampling.LANCZOS)
-        
-        # Caractères ASCII du plus clair au plus foncé
-        ascii_chars = ' .:-=+*#%@'
-        
-        ascii_art = []
-        pixels = img.getdata()
-        pixel_count = 0
-        
-        for pixel in pixels:
-            # Normaliser le pixel à un index ASCII
-            ascii_index = min(len(ascii_chars) - 1, int(pixel / 255 * (len(ascii_chars) - 1)))
-            ascii_art.append(ascii_chars[ascii_index])
-            pixel_count += 1
-            
-            if pixel_count % width == 0:
-                ascii_art.append('\n')
-        
-        return ''.join(ascii_art).strip().split('\n')
-    except Exception as e:
-        print(f"Erreur lors de la conversion de l'image en ASCII: {e}")
-        return []
 
 
 def get_logo_path():
@@ -213,7 +170,7 @@ def generate_invoice(sale_data, output_filename="facture.pdf"):
         "N. IMPOT: A2202409T",
         "Adresse: N.03, Av. Potopoto, Q/Kasuku, C/Kasuku, Ville de Kindu",
         "Province du Maniema, RDC",
-        "0815100000, 0993200000, 0997800000, 0840000031, 0855555483",
+        "0815100000, 0993200000, 0997800000, 0978100000, 0976111111, 0813155555",
         "Email: mussagabriel85@gmail.com, mussagabriel82@gmail.com"
     ]
     for info in company_info:
@@ -434,13 +391,23 @@ def print_thermal_receipt(sale_data, printer_width="80mm"):
     # En-tête
     add_centered("=" * (max_chars // 2))
     
-    # Ajouter le logo ASCII art
+    # Ajouter le logo en tant qu'image bitmap
     logo_path = get_logo_path()
-    if logo_path:
-        ascii_logo = image_to_ascii_art(logo_path, width=max_chars - 4)
-        for line in ascii_logo:
-            add_centered(line)
-        add_centered("")
+    logo_bitmap = None
+    logo_height = 0
+    if logo_path and os.path.exists(logo_path):
+        try:
+            logo_bitmap = Image.open(logo_path).convert("L")
+            # dimensionner au maximum de la largeur du ticket moins les marges
+            max_logo_w = paper_width - 20
+            ratio = logo_bitmap.height / logo_bitmap.width
+            logo_bitmap = logo_bitmap.resize((max_logo_w, int(max_logo_w * ratio)),
+                                             Image.Resampling.LANCZOS)
+            # rendre binaire si nécessaire (têtes thermiques)
+            logo_bitmap = logo_bitmap.point(lambda p: 0 if p < 128 else 255, "L")
+            logo_height = logo_bitmap.height + line_spacing
+        except Exception as e:
+            print(f"Erreur chargement logo thermique : {e}")
     
     add_centered("SOCIETE CAMELEON GABRIELLA", True)
     add_centered("SOCAGA en sigle", True)
@@ -451,8 +418,8 @@ def print_thermal_receipt(sale_data, printer_width="80mm"):
     add_centered("C/Kasuku, Ville de Kindu")
     add_centered("Province du Maniema, RDC")
     add_centered("0815100000, 0993200000")
-    add_centered("0997800000, 0840000031")
-    add_centered("0855555483")
+    add_centered("0997800000, 0978100000")
+    add_centered("0976111111")
     add_centered("mussagabriel85@gmail.com")
     add_centered("mussagabriel82@gmail.com")
     add_centered("=" * (max_chars // 2))
@@ -472,10 +439,27 @@ def print_thermal_receipt(sale_data, printer_width="80mm"):
     add_centered("-" * max_chars)
 
     # En-têtes des articles avec colonnes bien définies
-    # Largeurs: Article(20) | Qté(4) | Prix(10) | Total(10) = 44 chars + 3 séparateurs
+    # Les largeurs de base sont adaptées automatiquement si max_chars est plus petit
     col_widths = {'article': 20, 'qty': 4, 'price': 10, 'total': 10}
-    header_line = f"{'Article':<{col_widths['article']}}|{'Qté':>{col_widths['qty']}}|{'Prix':>{col_widths['price']}}|{'Total':>{col_widths['total']}}"
-    add_left(header_line[:max_chars], True)
+    # calculer somme et ajuster si nécessaire
+    total_base = sum(col_widths.values()) + 3  # +3 pour les séparateurs
+    if total_base > max_chars:
+        # retirer les séparateurs pour calculer échelle sur les colonnes
+        scale = (max_chars - 3) / sum(col_widths.values())
+        for k, v in list(col_widths.items()):
+            # s'assurer d'au moins 1 caractère
+            col_widths[k] = max(1, int(v * scale))
+        # il se peut qu'on perde une colonne entière, redistribuer le reste sur article
+        remaining = max_chars - 3 - sum(col_widths.values())
+        if remaining > 0:
+            col_widths['article'] += remaining
+    header_line = (
+        f"{'Article':<{col_widths['article']}}|"
+        f"{'Qté':>{col_widths['qty']}}|"
+        f"{'Prix':>{col_widths['price']}}|"
+        f"{'Total':>{col_widths['total']}}"
+    )
+    add_left(header_line, True)
     add_centered("-" * max_chars)
 
     # Articles
@@ -519,14 +503,19 @@ def print_thermal_receipt(sale_data, printer_width="80mm"):
     add_centered("Merci de votre visite!")
     add_centered("=" * max_chars)
 
-    # Calculer la hauteur de l'image
-    image_height = line_spacing * len(receipt_lines) + 20
+    # Calculer la hauteur de l'image (texte + éventuel logo)
+    image_height = line_spacing * len(receipt_lines) + 20 + logo_height
 
     # Créer l'image
     image = Image.new("L", (paper_width, image_height), 255)
     draw = ImageDraw.Draw(image)
 
     y = 10
+    # coller le logo si on en a un
+    if logo_bitmap:
+        image.paste(logo_bitmap, (10, y))
+        y += logo_bitmap.height + line_spacing
+
     for align, text, bold in receipt_lines:
         # Choisir la police (gras si demandé)
         current_font = font
