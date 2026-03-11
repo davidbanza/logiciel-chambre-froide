@@ -9,7 +9,8 @@ from database import (get_all_products, get_all_payment_modes, create_sale, get_
                       is_manager, create_debt, is_credit_payment,
                       get_clients_by_phone, create_client_direct, update_sale, get_all_users, get_all_sales_detailed,
                       get_remaining_amount_for_debt, get_total_paid_for_debt, get_payments_by_date_and_vendor, update_sale_details)
-from invoice_generator import generate_invoice, open_invoice, print_thermal_receipt, generate_and_print_receipt
+from invoice_generator import (generate_invoice, open_invoice, print_thermal_receipt, 
+                               generate_and_print_receipt, get_invoice_storage_path, build_invoice_filename)
 from utils import format_currency, ask_print_options
 
 
@@ -313,8 +314,10 @@ class SaleDetailsDialog(QDialog):
             # Générer PDF si demandé
             pdf_filename = None
             if print_options['print_pdf']:
-                pdf_filename = f"factures/facture_{self.sale_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-                os.makedirs("factures", exist_ok=True)
+                # Demander à l'utilisateur le dossier de stockage
+                storage_path = get_invoice_storage_path(self)
+                base_filename = f"facture_{self.sale_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                pdf_filename = build_invoice_filename(storage_path, base_filename)
                 
                 if generate_invoice(self.sale_data, pdf_filename):
                     success_messages.append(f"✓ PDF généré: {pdf_filename}")
@@ -1076,9 +1079,10 @@ class SalesView(QWidget):
                 # Générer PDF si demandé
                 pdf_filename = None
                 if print_options['print_pdf']:
-                    pdf_filename = f"factures/facture_{sale_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-                    import os
-                    os.makedirs("factures", exist_ok=True)
+                    # Demander à l'utilisateur le dossier de stockage
+                    storage_path = get_invoice_storage_path(self)
+                    base_filename = f"facture_{sale_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                    pdf_filename = build_invoice_filename(storage_path, base_filename)
                     
                     if generate_invoice(sale_data, pdf_filename):
                         success_messages.append(f"✓ PDF généré: {pdf_filename}")

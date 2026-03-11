@@ -8,7 +8,8 @@ from database import (get_all_debts, update_debt, update_debt_status,
                       get_remaining_amount_for_debt, record_payment,
                       get_payments_for_debt, get_total_paid_for_debt, get_sale_by_id)
 from utils import format_currency, ask_print_options
-from invoice_generator import generate_invoice, open_invoice, print_thermal_receipt, generate_and_print_receipt
+from invoice_generator import (generate_invoice, open_invoice, print_thermal_receipt, 
+                               generate_and_print_receipt, get_invoice_storage_path, build_invoice_filename)
 from datetime import datetime
 import os
 
@@ -839,8 +840,10 @@ class DebtsView(QWidget):
                             # Générer PDF si demandé
                             pdf_filename = None
                             if print_options['print_pdf']:
-                                os.makedirs("factures", exist_ok=True)
-                                pdf_filename = f"factures/paiement_dette_{self.current_debt_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                                # Demander à l'utilisateur le dossier de stockage
+                                storage_path = get_invoice_storage_path(self)
+                                base_filename = f"paiement_dette_{self.current_debt_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                                pdf_filename = build_invoice_filename(storage_path, base_filename)
                                 print(f"Génération: {pdf_filename}")
                                 
                                 if generate_invoice(sale_data, pdf_filename):

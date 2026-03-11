@@ -10,6 +10,14 @@ from datetime import datetime
 import os
 from utils import format_currency, resource_path
 
+# Import pour la boîte de dialogue de sélection de dossier
+try:
+    from PySide6.QtWidgets import QFileDialog
+    from PySide6.QtCore import QStandardPaths
+    PYQT_AVAILABLE = True
+except ImportError:
+    PYQT_AVAILABLE = False
+
 # Imports pour l'impression thermique
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -20,6 +28,82 @@ try:
 except ImportError:
     PIL_AVAILABLE = False
     print("PIL/win32print non disponibles - impression thermique désactivée")
+
+
+# ==================== GESTION DES DOSSIERS DE STOCKAGE ====================
+
+def ensure_invoice_directory(directory_path):
+    """Crée le dossier s'il n'existe pas"""
+    try:
+        if not os.path.exists(directory_path):
+            os.makedirs(directory_path, exist_ok=True)
+        return True
+    except Exception as e:
+        print(f"Erreur lors de la création du dossier {directory_path}: {e}")
+        return False
+
+
+def get_invoice_storage_path(parent_widget=None):
+    """
+    Permet à l'utilisateur de choisir le dossier de stockage des factures
+    
+    Args:
+        parent_widget: Widget parent PyQt (pour la boîte de dialogue)
+    
+    Returns:
+        Le chemin du dossier sélectionné, ou le dossier par défaut "factures/"
+    """
+    if not PYQT_AVAILABLE or parent_widget is None:
+        # Retourner le dossier par défaut si PyQt n'est pas disponible
+        return "factures"
+    
+    try:
+        # Chemin par défaut
+        default_path = os.path.abspath("factures")
+        
+        # Ouvrir une boîte de dialogue pour sélectionner le dossier
+        selected_path = QFileDialog.getExistingDirectory(
+            parent_widget,
+            "Sélectionner le dossier de stockage des factures",
+            default_path,
+            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
+        )
+        
+        # Si l'utilisateur a sélectionné un dossier, l'utiliser
+        if selected_path:
+            # Créer le dossier s'il n'existe pas
+            ensure_invoice_directory(selected_path)
+            return selected_path
+        else:
+            # Si l'utilisateur a annulé, utiliser le dossier par défaut
+            ensure_invoice_directory(default_path)
+            return default_path
+            
+    except Exception as e:
+        print(f"Erreur lors de la sélection du dossier: {e}")
+        ensure_invoice_directory("factures")
+        return "factures"
+
+
+def build_invoice_filename(storage_path, base_filename):
+    """
+    Construit le chemin complet d'une facture
+    
+    Args:
+        storage_path: Dossier de stockage
+        base_filename: Nom de base du fichier (ex: facture_123.pdf)
+    
+    Returns:
+        Chemin complet du fichier
+    """
+    # Créer le dossier s'il n'existe pas
+    ensure_invoice_directory(storage_path)
+    
+    # Retourner le chemin complet
+    return os.path.join(storage_path, base_filename)
+
+
+
 
 
 def image_to_ascii_art(image_path, width=48):
@@ -490,17 +574,20 @@ def print_thermal_receipt(sale_data, printer_width="80mm"):
         return False
 
 
-def generate_and_print_receipt(sale_data, printer_width="80mm", print_thermal=True):
+def generate_and_print_receipt(sale_data, storage_path="factures", printer_width="80mm", print_thermal=True):
     """
     Génère un PDF et imprime un reçu thermique
 
     Args:
         sale_data: Données de la vente
+        storage_path: Dossier de stockage des factures (défaut: "factures")
         printer_width: Largeur de l'imprimante ("56mm" ou "80mm")
         print_thermal: Si True, imprime aussi sur imprimante thermique
     """
     # Générer le PDF d'abord
-    pdf_filename = f"factures/reçu_{sale_data.get('id_vente', 'unknown')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    ensure_invoice_directory(storage_path)
+    base_filename = f"reçu_{sale_data.get('id_vente', 'unknown')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    pdf_filename = build_invoice_filename(storage_path, base_filename)
     pdf_success = generate_invoice(sale_data, pdf_filename)
 
     # Imprimer sur thermique si demandé
