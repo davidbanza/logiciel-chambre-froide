@@ -1411,3 +1411,46 @@ def update_debt_amount(debt_id, new_amount):
         return False
     finally:
         conn.close()
+
+
+def get_all_payments_with_details(start_date=None, end_date=None):
+    """Récupère tous les paiements avec les détails (client, vendeur, etc.)"""
+    try:
+        conn = connect_db()
+        with conn.cursor() as cursor:
+            sql = """SELECT p.id_pai as id_paiement, p.date_pai as date_paiement, 
+                            p.montant_pai as montant_paiement,
+                            CONCAT(u.prenom_ut, ' ', u.nom_ut) as vendeur,
+                            CONCAT(c.nom_client, ' ', c.prenom_client) as client,
+                            CASE 
+                                WHEN d.id_dette IS NOT NULL THEN 'Paiement de dette'
+                                ELSE 'Paiement de vente'
+                            END as type_paiement
+                     FROM paiement p
+                     LEFT JOIN vente v ON p.id_vente = v.id_vente
+                     LEFT JOIN utilisateur u ON p.id_vendeur_collecteur = u.id_ut
+                     LEFT JOIN client c ON v.id_client = c.id_client
+                     LEFT JOIN dette d ON v.id_vente = d.id_vente"""
+
+            conditions = []
+            params = []
+
+            if start_date:
+                conditions.append("DATE(p.date_pai) >= %s")
+                params.append(start_date)
+            if end_date:
+                conditions.append("DATE(p.date_pai) <= %s")
+                params.append(end_date)
+
+            if conditions:
+                sql += " WHERE " + " AND ".join(conditions)
+
+            sql += " ORDER BY p.date_pai DESC"
+
+            cursor.execute(sql, params)
+            return cursor.fetchall()
+    except Exception as e:
+        print(f"Erreur: {e}")
+        return []
+    finally:
+        conn.close()

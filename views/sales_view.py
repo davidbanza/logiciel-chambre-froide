@@ -596,6 +596,11 @@ class SalesView(QWidget):
         btn_refresh.clicked.connect(self.refresh_daily_sales)
         layout.addWidget(btn_refresh)
         
+        btn_print_daily = QPushButton("🖨️ Imprimer Paiements (PDF)")
+        btn_print_daily.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 8px;")
+        btn_print_daily.clicked.connect(self.print_daily_payments_pdf)
+        layout.addWidget(btn_print_daily)
+        
         self.tab_daily_sales.setLayout(layout)
 
     def setup_all_sales_tab(self):
@@ -636,6 +641,11 @@ class SalesView(QWidget):
         btn_refresh = QPushButton("🔄 Actualiser")
         btn_refresh.clicked.connect(self.refresh_all_sales)
         filters_layout.addWidget(btn_refresh)
+        
+        btn_print_all = QPushButton("🖨️ Imprimer Ventes (PDF)")
+        btn_print_all.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; padding: 8px;")
+        btn_print_all.clicked.connect(self.print_all_sales_pdf)
+        filters_layout.addWidget(btn_print_all)
         
         filters_layout.addStretch()
         layout.addLayout(filters_layout)
@@ -1654,3 +1664,271 @@ class SalesView(QWidget):
             widget = self.edit_form_layout.takeAt(0).widget()
             if widget:
                 widget.deleteLater()
+
+    def print_daily_payments_pdf(self):
+        """Imprime les paiements du jour en PDF"""
+        from reportlab.lib.pagesizes import letter
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        import datetime
+        from invoice_generator import get_invoice_storage_path, build_invoice_filename
+
+        if hasattr(self, 'filter_date'):
+            query_date = self.filter_date.date().toString("yyyy-MM-dd")
+        else:
+            query_date = QDate.currentDate().toString("yyyy-MM-dd")
+
+        vendor_id = None
+        if self.user['id_role'] == 1:
+            if hasattr(self, 'daily_vendor_filter'):
+                vendor_id = self.daily_vendor_filter.currentData()
+        else:
+            vendor_id = self.user['id_ut']
+
+        payments = get_payments_by_date_and_vendor(query_date, vendor_id)
+
+        storage_path = get_invoice_storage_path(self)
+        base_filename = f"paiements_{query_date}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        filename = build_invoice_filename(storage_path, base_filename)
+
+        doc = SimpleDocTemplate(filename, pagesize=letter)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        from invoice_generator import get_logo_path
+        logo_path = get_logo_path()
+        if logo_path:
+            try:
+                from reportlab.platypus import Image as RLImage
+                logo = RLImage(logo_path, width=1.5*inch, height=1.5*inch)
+                logo_table = Table([[logo]], colWidths=[6*inch])
+                logo_table.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
+                elements.append(logo_table)
+                elements.append(Spacer(1, 0.1*inch))
+            except Exception as e:
+                pass
+
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=20, textColor=colors.blue, spaceAfter=10, alignment=1)
+        elements.append(Paragraph("SOCIETE CAMELEON GABRIELLA", title_style))
+        elements.append(Paragraph("SOCAGA en sigle", title_style))
+        company_info = [
+            "N. RCCM: CD/KND/RCCM/21-B-788", "ID. NAT: N. 14-F4300-N04828N", "N. IMPOT: A2202409T",
+            "Adresse: N.03, Av. Potopoto, Q/Kasuku, C/Kasuku, Ville de Kindu", "Province du Maniema, RDC",
+            "0815100000, 0993200000, 0997800000, 0978100000, 0976111111, 0813155555",
+            "Email: mussagabriel85@gmail.com, mussagabriel82@gmail.com"
+        ]
+        for info in company_info:
+            elements.append(Paragraph(info, styles['Normal']))
+        elements.append(Spacer(1, 0.2*inch))
+
+        elements.append(Paragraph("PAIEMENTS", title_style))
+        elements.append(Spacer(1, 0.1*inch))
+        
+        display_date = QDate.fromString(query_date, "yyyy-MM-dd").toString("dd/MM/yyyy")
+        elements.append(Paragraph(f"Date: {display_date}", styles['Normal']))
+        
+        if self.user['id_role'] == 1 and hasattr(self, 'daily_vendor_filter') and self.daily_vendor_filter.currentData():
+            vendor_name = self.daily_vendor_filter.currentText()
+            elements.append(Paragraph(f"Collecteur: {vendor_name}", styles['Normal']))
+            
+        elements.append(Spacer(1, 0.2*inch))
+
+        table_data = [["N.", "ID Vente", "Client", "Type Paiement", "Montant"]]
+        
+        cash_payments = 0
+        debt_advances = 0
+
+        for idx, payment in enumerate(payments, 1):
+            payment_id = payment['id_pai']
+            amount = float(payment['montant_pai'])
+            sale_id = payment['id_vente']
+            payment_mode = payment['payment_mode']
+
+            if "dette" in payment_mode.lower() or "crédit" in payment_mode.lower():
+                debt_advances += amount
+                payment_type = "Avance dette"
+            else:
+                cash_payments += amount
+                payment_type = "Cash"
+
+            sale_info = get_sale_by_id(sale_id)
+            client_name = sale_info.get('client', 'N/A') if sale_info else 'N/A'
+
+            table_data.append([
+                str(idx), str(sale_id), client_name, payment_type, format_currency(amount)
+            ])
+
+        total_encaisse = cash_payments + debt_advances
+        
+        table_data.append(["", "TOTAL CAISSE", "", "", format_currency(total_encaisse)])
+        
+        col_widths = [0.5*inch, 1.0*inch, 2.5*inch, 1.5*inch, 1.5*inch]
+        table = Table(table_data, colWidths=col_widths)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.blue),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, -1), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ]))
+
+        elements.append(table)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        summary_style = ParagraphStyle('Summary', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold')
+        elements.append(Paragraph(f"Détail :", summary_style))
+        elements.append(Paragraph(f"- Paiements cash : {format_currency(cash_payments)}", styles['Normal']))
+        elements.append(Paragraph(f"- Avances dettes : {format_currency(debt_advances)}", styles['Normal']))
+        elements.append(Spacer(1, 0.2*inch))
+
+        footer_style = ParagraphStyle('CustomFooter', parent=styles['Normal'], fontSize=9, textColor=colors.black, alignment=1)
+        elements.append(Paragraph(f"Rapport généré le {datetime.datetime.now().strftime('%d/%m/%Y à %H:%M:%S')}", footer_style))
+
+        try:
+            from PySide6.QtWidgets import QMessageBox
+            doc.build(elements)
+            QMessageBox.information(self, "Paiements PDF", f"PDF généré avec succès :\n{filename}\nVoulez-vous l'ouvrir ?")
+            from invoice_generator import open_invoice
+            open_invoice(filename)
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Erreur PDF", f"Erreur lors de la génération du PDF : {str(e)}")
+
+    def print_all_sales_pdf(self):
+        """Imprime toutes les ventes filtrées en PDF (Manager)"""
+        from reportlab.lib.pagesizes import letter
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        import datetime
+        from invoice_generator import get_invoice_storage_path, build_invoice_filename
+
+        all_sales = get_all_sales_detailed()
+        vendor_id = self.filter_vendor.currentData()
+        start_date = self.filter_start_date.date()
+        end_date = self.filter_end_date.date()
+        
+        filtered_sales = []
+        for sale in all_sales:
+            if vendor_id is not None and sale.get('id_vendeur') != vendor_id:
+                continue
+            sale_date = QDate.fromString(str(sale['date_vente']), "yyyy-MM-dd")
+            if not (start_date <= sale_date <= end_date):
+                continue
+            filtered_sales.append(sale)
+
+        storage_path = get_invoice_storage_path(self)
+        start_str = start_date.toString("yyyy-MM-dd")
+        end_str = end_date.toString("yyyy-MM-dd")
+        base_filename = f"ventes_manager_{start_str}_au_{end_str}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        filename = build_invoice_filename(storage_path, base_filename)
+
+        doc = SimpleDocTemplate(filename, pagesize=letter)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        from invoice_generator import get_logo_path
+        logo_path = get_logo_path()
+        if logo_path:
+            try:
+                from reportlab.platypus import Image as RLImage
+                logo = RLImage(logo_path, width=1.5*inch, height=1.5*inch)
+                logo_table = Table([[logo]], colWidths=[6*inch])
+                logo_table.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
+                elements.append(logo_table)
+                elements.append(Spacer(1, 0.1*inch))
+            except Exception as e:
+                pass
+
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=20, textColor=colors.blue, spaceAfter=10, alignment=1)
+        elements.append(Paragraph("SOCIETE CAMELEON GABRIELLA", title_style))
+        elements.append(Paragraph("SOCAGA en sigle", title_style))
+        company_info = [
+            "N. RCCM: CD/KND/RCCM/21-B-788", "ID. NAT: N. 14-F4300-N04828N", "N. IMPOT: A2202409T",
+            "Adresse: N.03, Av. Potopoto, Q/Kasuku, C/Kasuku, Ville de Kindu", "Province du Maniema, RDC",
+            "0815100000, 0993200000, 0997800000, 0978100000, 0976111111, 0813155555",
+            "Email: mussagabriel85@gmail.com, mussagabriel82@gmail.com"
+        ]
+        for info in company_info:
+            elements.append(Paragraph(info, styles['Normal']))
+        elements.append(Spacer(1, 0.2*inch))
+
+        elements.append(Paragraph("RAPPORT DE VENTES", title_style))
+        elements.append(Spacer(1, 0.1*inch))
+        
+        elements.append(Paragraph(f"Période: du {start_date.toString('dd/MM/yyyy')} au {end_date.toString('dd/MM/yyyy')}", styles['Normal']))
+        if vendor_id is not None:
+            v_name = self.filter_vendor.currentText()
+            elements.append(Paragraph(f"Vendeur filtré: {v_name}", styles['Normal']))
+        elements.append(Spacer(1, 0.2*inch))
+
+        table_data = [["N.", "ID Vente", "Date", "Vendeur", "Client", "M. Paiement", "Montant Total", "Payé", "Reste"]]
+
+        total_montant = 0
+        total_paye = 0
+        total_reste = 0
+
+        for idx, sale in enumerate(filtered_sales, 1):
+            montant = float(sale.get('montant_total', 0) or 0)
+            debt_id = sale.get('id_dette')
+            if debt_id:
+                paid_amount = float(get_total_paid_for_debt(debt_id))
+                remaining_amount = float(get_remaining_amount_for_debt(debt_id))
+            else:
+                paid_amount = montant
+                remaining_amount = 0
+
+            date_str = str(sale.get('date_vente', ''))
+            vendeur_str = sale.get('vendeur', 'N/A') or "N/A"
+            client_str = sale.get('client', 'N/A') or "N/A"
+            mode_str = sale.get('mode_paiement', 'N/A') or "N/A"
+
+            table_data.append([
+                str(idx), str(sale['id_vente']), date_str, vendeur_str, client_str, mode_str,
+                format_currency(montant), format_currency(paid_amount), format_currency(remaining_amount)
+            ])
+
+            total_montant += montant
+            total_paye += paid_amount
+            total_reste += remaining_amount
+
+        table_data.append(["", "", "TOTAL", "", "", "", format_currency(total_montant), format_currency(total_paye), format_currency(total_reste)])
+        
+        col_widths = [0.3*inch, 0.6*inch, 0.8*inch, 1.2*inch, 1.3*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.8*inch]
+        table = Table(table_data, colWidths=col_widths)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.blue),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, -1), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('WORDWRAP', (0, 0), (-1, -1), 'ON'),
+        ]))
+
+        elements.append(table)
+        elements.append(Spacer(1, 0.2*inch))
+
+        footer_style = ParagraphStyle('CustomFooter', parent=styles['Normal'], fontSize=9, textColor=colors.black, alignment=1)
+        elements.append(Paragraph(f"Rapport généré le {datetime.datetime.now().strftime('%d/%m/%Y à %H:%M:%S')}", footer_style))
+        elements.append(Paragraph(f"Nombre total de ventes: {len(filtered_sales)}", footer_style))
+
+        try:
+            from PySide6.QtWidgets import QMessageBox
+            doc.build(elements)
+            QMessageBox.information(self, "Ventes PDF", f"PDF généré avec succès :\n{filename}\nVoulez-vous l'ouvrir ?")
+            from invoice_generator import open_invoice
+            open_invoice(filename)
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Erreur PDF", f"Erreur lors de la génération du PDF : {str(e)}")

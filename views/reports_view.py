@@ -4,8 +4,10 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
 from PySide6.QtCore import Qt, QDate
 from database import (get_total_sales_stats, get_sales_by_vendor, 
                       get_sales_by_payment_mode, get_debts_summary, 
-                      get_all_sales_detailed, get_sales_by_date_range, is_manager)
+                      get_all_sales_detailed, get_sales_by_date_range, is_manager,
+                      get_all_payments_with_details)
 from utils import format_currency
+from invoice_generator import (get_invoice_storage_path, build_invoice_filename)
 
 
 class ReportsView(QWidget):
@@ -62,6 +64,11 @@ class ReportsView(QWidget):
         self.tab_all_sales = QWidget()
         self.setup_all_sales_tab()
         self.tabs.addTab(self.tab_all_sales, "📋 Toutes les Ventes")
+        
+        # Onglet 6 : Historique des paiements
+        self.tab_payments_history = QWidget()
+        self.setup_payments_history_tab()
+        self.tabs.addTab(self.tab_payments_history, "💰 Historique des Paiements")
         
         main_layout.addWidget(self.tabs)
         self.setLayout(main_layout)
@@ -264,6 +271,12 @@ class ReportsView(QWidget):
         btn_filter.clicked.connect(self.load_all_sales_data)
         filters_layout.addWidget(btn_filter)
         
+        # Bouton d'impression de l'historique des ventes
+        btn_print_sales_history = QPushButton("🖨️ Imprimer Historique Ventes (PDF)")
+        btn_print_sales_history.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; padding: 8px;")
+        btn_print_sales_history.clicked.connect(self.print_sales_history_pdf)
+        filters_layout.addWidget(btn_print_sales_history)
+        
         filters_layout.addStretch()
         layout.addLayout(filters_layout)
         
@@ -398,3 +411,352 @@ class ReportsView(QWidget):
         self.load_by_payment_data()
         self.load_debts_data()
         self.load_all_sales_data()
+        self.load_payments_history_data()
+
+    def print_sales_history_pdf(self):
+        """Imprime l'historique des ventes en PDF"""
+        from reportlab.lib.pagesizes import letter
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        from reportlab.lib.utils import ImageReader
+        import datetime
+        import os
+
+        # Récupérer les données filtrées
+        start_date = self.date_start.date().toString("yyyy-MM-dd")
+        end_date = self.date_end.date().toString("yyyy-MM-dd")
+
+        raw = get_all_sales_detailed()
+        sales_data = [item for item in raw
+                     if start_date <= str(item.get('date_vente', '')) <= end_date]
+
+        # Créer le PDF
+        storage_path = get_invoice_storage_path(self)
+        base_filename = f"historique_ventes_{start_date}_au_{end_date}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        filename = build_invoice_filename(storage_path, base_filename)
+
+        doc = SimpleDocTemplate(filename, pagesize=letter)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        # Ajouter le logo en haut au centre
+        from invoice_generator import get_logo_path
+        logo_path = get_logo_path()
+        if logo_path:
+            try:
+                from reportlab.platypus import Image as RLImage
+                logo = RLImage(logo_path, width=1.5*inch, height=1.5*inch)
+                logo_table = Table([[logo]], colWidths=[6*inch])
+                logo_table.setStyle(TableStyle([
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ]))
+                elements.append(logo_table)
+                elements.append(Spacer(1, 0.1*inch))
+            except Exception as e:
+                print(f"Erreur lors de l'ajout du logo: {e}")
+
+        # Informations de l'entreprise
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=20,
+            textColor=colors.blue,
+            spaceAfter=10,
+            alignment=1
+        )
+
+        elements.append(Paragraph("SOCIETE CAMELEON GABRIELLA", title_style))
+        elements.append(Paragraph("SOCAGA en sigle", title_style))
+        company_info = [
+            "N. RCCM: CD/KND/RCCM/21-B-788",
+            "ID. NAT: N. 14-F4300-N04828N",
+            "N. IMPOT: A2202409T",
+            "Adresse: N.03, Av. Potopoto, Q/Kasuku, C/Kasuku, Ville de Kindu",
+            "Province du Maniema, RDC",
+            "0815100000, 0993200000, 0997800000, 0978100000, 0976111111, 0813155555",
+            "Email: mussagabriel85@gmail.com, mussagabriel82@gmail.com"
+        ]
+        for info in company_info:
+            elements.append(Paragraph(info, styles['Normal']))
+        elements.append(Spacer(1, 0.2*inch))
+
+        # Titre du rapport
+        elements.append(Paragraph("HISTORIQUE DES VENTES", title_style))
+        elements.append(Spacer(1, 0.1*inch))
+
+        # Informations sur la période
+        period_info = f"Période: du {self.date_start.date().toString('dd/MM/yyyy')} au {self.date_end.date().toString('dd/MM/yyyy')}"
+        elements.append(Paragraph(period_info, styles['Normal']))
+        elements.append(Spacer(1, 0.2*inch))
+
+        # Préparer les données du tableau
+        table_data = [["N.", "ID Vente", "Date", "Vendeur", "Client", "Mode Paiement", "Montant", "Articles"]]
+
+        total_montant = 0
+        total_articles = 0
+
+        for idx, sale in enumerate(sales_data, 1):
+            montant = sale.get('montant_total', 0) or 0
+            articles = sale.get('nombre_articles', 0) or 0
+
+            table_data.append([
+                str(idx),
+                str(sale.get('id_vente', '')),
+                str(sale.get('date_vente', '')),
+                sale.get('vendeur', 'N/A') or "N/A",
+                sale.get('client', 'N/A') or "N/A",
+                sale.get('mode_paiement', 'N/A') or "N/A",
+                format_currency(montant),
+                str(articles),
+            ])
+
+            total_montant += montant
+            total_articles += articles
+
+        # Ajouter la ligne de total
+        table_data.append([
+            "", "TOTAL GÉNÉRAL", "", "", "", "",
+            format_currency(total_montant), str(total_articles)
+        ])
+
+        # Créer le tableau
+        table = Table(table_data, colWidths=[0.4*inch, 0.8*inch, 1.2*inch, 1.5*inch, 1.5*inch, 1.3*inch, 1.2*inch, 0.8*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.blue),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, -1), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('WORDWRAP', (0, 0), (-1, -1), 'ON'),
+        ]))
+
+        elements.append(table)
+        elements.append(Spacer(1, 0.2*inch))
+
+        # Pied de page
+        footer_style = ParagraphStyle(
+            'CustomFooter',
+            parent=styles['Normal'],
+            fontSize=9,
+            textColor=colors.black,
+            alignment=1
+        )
+        elements.append(Paragraph(f"Rapport généré le {datetime.datetime.now().strftime('%d/%m/%Y à %H:%M:%S')}", footer_style))
+        elements.append(Paragraph(f"Nombre total de ventes: {len(sales_data)}", footer_style))
+
+        try:
+            doc.build(elements)
+            QMessageBox.information(self, "Historique Ventes PDF", f"PDF généré avec succès :\n{filename}\nVoulez-vous l'ouvrir ?")
+            from invoice_generator import open_invoice
+            open_invoice(filename)
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur PDF", f"Erreur lors de la génération du PDF : {str(e)}")
+
+    def setup_payments_history_tab(self):
+        """Onglet de l'historique des paiements"""
+        layout = QVBoxLayout()
+
+        # Filtres de date
+        filters_layout = QHBoxLayout()
+        filters_layout.addWidget(QLabel("Période :"))
+        self.payments_date_start = QDateEdit()
+        self.payments_date_start.setDate(QDate.currentDate().addMonths(-1))
+        self.payments_date_start.dateChanged.connect(self.load_payments_history_data)
+        filters_layout.addWidget(self.payments_date_start)
+
+        filters_layout.addWidget(QLabel("à"))
+        self.payments_date_end = QDateEdit()
+        self.payments_date_end.setDate(QDate.currentDate())
+        self.payments_date_end.dateChanged.connect(self.load_payments_history_data)
+        filters_layout.addWidget(self.payments_date_end)
+
+        btn_refresh_payments = QPushButton("🔄 Actualiser")
+        btn_refresh_payments.clicked.connect(self.load_payments_history_data)
+        filters_layout.addWidget(btn_refresh_payments)
+
+        # Bouton d'impression de l'historique des paiements
+        btn_print_payments_history = QPushButton("🖨️ Imprimer Historique Paiements (PDF)")
+        btn_print_payments_history.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 8px;")
+        btn_print_payments_history.clicked.connect(self.print_payments_history_pdf)
+        filters_layout.addWidget(btn_print_payments_history)
+
+        filters_layout.addStretch()
+        layout.addLayout(filters_layout)
+
+        # Tableau
+        self.table_payments_history = QTableWidget()
+        self.table_payments_history.setColumnCount(5)
+        self.table_payments_history.setHorizontalHeaderLabels([
+            "ID Paiement", "Date", "Vendeur", "Client", "Montant"
+        ])
+        self.table_payments_history.setColumnWidth(0, 100)
+        self.table_payments_history.setColumnWidth(1, 120)
+        self.table_payments_history.setColumnWidth(2, 150)
+        self.table_payments_history.setColumnWidth(3, 150)
+        self.table_payments_history.setColumnWidth(4, 120)
+
+        layout.addWidget(self.table_payments_history)
+
+        self.tab_payments_history.setLayout(layout)
+
+    def load_payments_history_data(self):
+        """Charge l'historique des paiements"""
+        start_date = self.payments_date_start.date().toString("yyyy-MM-dd")
+        end_date = self.payments_date_end.date().toString("yyyy-MM-dd")
+
+        # Récupérer tous les paiements (ventes + paiements de dettes)
+        payments_data = get_all_payments_with_details(start_date, end_date)
+
+        self.table_payments_history.setRowCount(len(payments_data))
+
+        for row, payment in enumerate(payments_data):
+            self.table_payments_history.setItem(row, 0, QTableWidgetItem(str(payment.get('id_paiement', ''))))
+            self.table_payments_history.setItem(row, 1, QTableWidgetItem(str(payment.get('date_paiement', ''))))
+            self.table_payments_history.setItem(row, 2, QTableWidgetItem(payment.get('vendeur', 'N/A') or "N/A"))
+            self.table_payments_history.setItem(row, 3, QTableWidgetItem(payment.get('client', 'N/A') or "N/A"))
+            montant = payment.get('montant_paiement', 0) or 0
+            self.table_payments_history.setItem(row, 4, QTableWidgetItem(format_currency(montant)))
+
+    def print_payments_history_pdf(self):
+        """Imprime l'historique des paiements en PDF"""
+        from reportlab.lib.pagesizes import letter
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        from reportlab.lib.utils import ImageReader
+        import datetime
+        import os
+
+        # Récupérer les données filtrées
+        start_date = self.payments_date_start.date().toString("yyyy-MM-dd")
+        end_date = self.payments_date_end.date().toString("yyyy-MM-dd")
+
+        payments_data = get_all_payments_with_details(start_date, end_date)
+
+        # Créer le PDF
+        storage_path = get_invoice_storage_path(self)
+        base_filename = f"historique_paiements_{start_date}_au_{end_date}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        filename = build_invoice_filename(storage_path, base_filename)
+
+        doc = SimpleDocTemplate(filename, pagesize=letter)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        # Ajouter le logo en haut au centre
+        from invoice_generator import get_logo_path
+        logo_path = get_logo_path()
+        if logo_path:
+            try:
+                from reportlab.platypus import Image as RLImage
+                logo = RLImage(logo_path, width=1.5*inch, height=1.5*inch)
+                logo_table = Table([[logo]], colWidths=[6*inch])
+                logo_table.setStyle(TableStyle([
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ]))
+                elements.append(logo_table)
+                elements.append(Spacer(1, 0.1*inch))
+            except Exception as e:
+                print(f"Erreur lors de l'ajout du logo: {e}")
+
+        # Informations de l'entreprise
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=20,
+            textColor=colors.blue,
+            spaceAfter=10,
+            alignment=1
+        )
+
+        elements.append(Paragraph("SOCIETE CAMELEON GABRIELLA", title_style))
+        elements.append(Paragraph("SOCAGA en sigle", title_style))
+        company_info = [
+            "N. RCCM: CD/KND/RCCM/21-B-788",
+            "ID. NAT: N. 14-F4300-N04828N",
+            "N. IMPOT: A2202409T",
+            "Adresse: N.03, Av. Potopoto, Q/Kasuku, C/Kasuku, Ville de Kindu",
+            "Province du Maniema, RDC",
+            "0815100000, 0993200000, 0997800000, 0978100000, 0976111111, 0813155555",
+            "Email: mussagabriel85@gmail.com, mussagabriel82@gmail.com"
+        ]
+        for info in company_info:
+            elements.append(Paragraph(info, styles['Normal']))
+        elements.append(Spacer(1, 0.2*inch))
+
+        # Titre du rapport
+        elements.append(Paragraph("HISTORIQUE DES PAIEMENTS", title_style))
+        elements.append(Spacer(1, 0.1*inch))
+
+        # Informations sur la période
+        period_info = f"Période: du {self.payments_date_start.date().toString('dd/MM/yyyy')} au {self.payments_date_end.date().toString('dd/MM/yyyy')}"
+        elements.append(Paragraph(period_info, styles['Normal']))
+        elements.append(Spacer(1, 0.2*inch))
+
+        # Préparer les données du tableau
+        table_data = [["N.", "ID Paiement", "Date", "Vendeur", "Client", "Montant"]]
+
+        total_montant = 0
+
+        for idx, payment in enumerate(payments_data, 1):
+            montant = payment.get('montant_paiement', 0) or 0
+
+            table_data.append([
+                str(idx),
+                str(payment.get('id_paiement', '')),
+                str(payment.get('date_paiement', '')),
+                payment.get('vendeur', 'N/A') or "N/A",
+                payment.get('client', 'N/A') or "N/A",
+                format_currency(montant),
+            ])
+
+            total_montant += montant
+
+        # Ajouter la ligne de total
+        table_data.append([
+            "", "TOTAL GÉNÉRAL", "", "", "",
+            format_currency(total_montant)
+        ])
+
+        # Créer le tableau
+        table = Table(table_data, colWidths=[0.4*inch, 1*inch, 1.2*inch, 1.5*inch, 1.5*inch, 1.4*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.blue),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, -1), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('WORDWRAP', (0, 0), (-1, -1), 'ON'),
+        ]))
+
+        elements.append(table)
+        elements.append(Spacer(1, 0.2*inch))
+
+        # Pied de page
+        footer_style = ParagraphStyle(
+            'CustomFooter',
+            parent=styles['Normal'],
+            fontSize=9,
+            textColor=colors.black,
+            alignment=1
+        )
+        elements.append(Paragraph(f"Rapport généré le {datetime.datetime.now().strftime('%d/%m/%Y à %H:%M:%S')}", footer_style))
+        elements.append(Paragraph(f"Nombre total de paiements: {len(payments_data)}", footer_style))
+
+        try:
+            doc.build(elements)
+            QMessageBox.information(self, "Historique Paiements PDF", f"PDF généré avec succès :\n{filename}\nVoulez-vous l'ouvrir ?")
+            from invoice_generator import open_invoice
+            open_invoice(filename)
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur PDF", f"Erreur lors de la génération du PDF : {str(e)}")
