@@ -226,27 +226,165 @@ class DebtsView(QWidget):
             ])
 
         # Créer le PDF
-        os.makedirs("factures", exist_ok=True)
-        filename = f"factures/listing_dettes_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        # Demander à l'utilisateur le dossier de stockage
+        storage_path = get_invoice_storage_path(self)
+        base_filename = f"listing_dettes_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        filename = build_invoice_filename(storage_path, base_filename)
+        
         doc = SimpleDocTemplate(filename, pagesize=letter)
         elements = []
         styles = getSampleStyleSheet()
-        title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, textColor=colors.blue, alignment=1)
-        elements.append(Paragraph("Listing des Dettes Clients", title_style))
+        
+        # Ajouter le logo en haut au centre
+        from invoice_generator import get_logo_path
+        logo_path = get_logo_path()
+        if logo_path:
+            try:
+                from reportlab.platypus import Image as RLImage
+                logo = RLImage(logo_path, width=1.5*inch, height=1.5*inch)
+                logo_table = Table([[logo]], colWidths=[6*inch])
+                logo_table.setStyle(TableStyle([
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ]))
+                elements.append(logo_table)
+                elements.append(Spacer(1, 0.1*inch))
+            except Exception as e:
+                print(f"Erreur lors de l'ajout du logo: {e}")
+        
+        # Informations de l'entreprise
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=20,
+            textColor=colors.blue,
+            spaceAfter=10,
+            alignment=1  # Center
+        )
+        
+        elements.append(Paragraph("SOCIETE CAMELEON GABRIELLA", title_style))
+        elements.append(Paragraph("SOCAGA en sigle", title_style))
+        company_info = [
+            "N. RCCM: CD/KND/RCCM/21-B-788",
+            "ID. NAT: N. 14-F4300-N04828N",
+            "N. IMPOT: A2202409T",
+            "Adresse: N.03, Av. Potopoto, Q/Kasuku, C/Kasuku, Ville de Kindu",
+            "Province du Maniema, RDC",
+            "0815100000, 0993200000, 0997800000, 0978100000, 0976111111, 0813155555",
+            "Email: mussagabriel85@gmail.com, mussagabriel82@gmail.com"
+        ]
+        for info in company_info:
+            elements.append(Paragraph(info, styles['Normal']))
         elements.append(Spacer(1, 0.2*inch))
-        table = Table(table_data, colWidths=[0.5*inch, 2*inch, 1.2*inch, 1*inch, 1*inch, 1*inch, 1*inch])
+        
+        # Titre du listing
+        elements.append(Paragraph("LISTING DES DETTES CLIENTS", title_style))
+        elements.append(Spacer(1, 0.1*inch))
+        
+        # Informations sur les filtres appliqués
+        filter_info = f"Période: du {start_date.toString('dd/MM/yyyy')} au {end_date.toString('dd/MM/yyyy')}"
+        if status_filter != "TOUS":
+            filter_info += f" | Statut: {status_filter}"
+        elements.append(Paragraph(filter_info, styles['Normal']))
+        elements.append(Spacer(1, 0.2*inch))
+
+        # Récupérer les détails des cartons pour chaque dette
+        debts_with_details = []
+        for debt in filtered_debts:
+            debt_details = dict(debt)
+            
+            # Récupérer les détails de la vente pour connaître les types de cartons
+            sale_data = get_sale_by_id(debt['id_vente'])
+            if sale_data and 'articles' in sale_data:
+                # Compter les cartons par type
+                carton_poisson = 0
+                carton_poulet = 0
+                
+                for article in sale_data['articles']:
+                    nom_produit = article.get('nom_pr', '').lower()
+                    quantite = article.get('quantite', 0)
+                    
+                    if 'poisson' in nom_produit:
+                        carton_poisson += quantite
+                    elif 'poulet' in nom_produit:
+                        carton_poulet += quantite
+                
+                debt_details['carton_poisson'] = carton_poisson
+                debt_details['carton_poulet'] = carton_poulet
+            else:
+                debt_details['carton_poisson'] = 0
+                debt_details['carton_poulet'] = 0
+            
+            debts_with_details.append(debt_details)
+
+        # Préparer les données du tableau amélioré
+        table_data = [["N.", "Client", "Poisson", "Poulet", "Montant Total", "Payé", "Reste"]]
+        
+        total_montant = 0
+        total_paye = 0
+        total_reste = 0
+        total_poisson = 0
+        total_poulet = 0
+        
+        for idx, debt in enumerate(debts_with_details, 1):
+            montant_total = debt.get('montant_total_dette', 0)
+            montant_paye = get_total_paid_for_debt(debt['id_dette'])
+            montant_reste = get_remaining_amount_for_debt(debt['id_dette'])
+            
+            carton_poisson = debt.get('carton_poisson', 0)
+            carton_poulet = debt.get('carton_poulet', 0)
+            
+            table_data.append([
+                str(idx),
+                debt.get('client', 'N/A'),
+                str(carton_poisson),
+                str(carton_poulet),
+                format_currency(montant_total),
+                format_currency(montant_paye),
+                format_currency(montant_reste),
+            ])
+            
+            # Accumuler les totaux
+            total_montant += montant_total
+            total_paye += montant_paye
+            total_reste += montant_reste
+            total_poisson += carton_poisson
+            total_poulet += carton_poulet
+        
+        # Ajouter la ligne de total
+        table_data.append([
+            "", "TOTAL GÉNÉRAL", 
+            str(total_poisson), str(total_poulet),
+            format_currency(total_montant), format_currency(total_paye), format_currency(total_reste)
+        ])
+        
+        # Créer le tableau
+        table = Table(table_data, colWidths=[0.4*inch, 2.2*inch, 0.9*inch, 0.9*inch, 1.4*inch, 1.3*inch, 1.3*inch])
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.blue),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, -1), (-1, -1), 11),
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
             ('WORDWRAP', (0, 0), (-1, -1), 'ON'),
         ]))
+        
         elements.append(table)
         elements.append(Spacer(1, 0.2*inch))
-        elements.append(Paragraph(f"Généré le {datetime.datetime.now().strftime('%d/%m/%Y à %H:%M:%S')}", styles['Normal']))
+        
+        # Pied de page
+        footer_style = ParagraphStyle(
+            'CustomFooter',
+            parent=styles['Normal'],
+            fontSize=9,
+            textColor=colors.black,
+            alignment=1
+        )
+        elements.append(Paragraph(f"Listing généré le {datetime.datetime.now().strftime('%d/%m/%Y à %H:%M:%S')}", footer_style))
+        elements.append(Paragraph(f"Nombre total de dettes listées: {len(debts_with_details)}", footer_style))
         try:
             doc.build(elements)
             QMessageBox.information(self, "Listing Dettes PDF", f"PDF généré avec succès :\n{filename}\nVoulez-vous l'ouvrir ?")
