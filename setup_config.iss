@@ -3,7 +3,7 @@
 ; Non-commercial use only
 
 #define MyAppName "SOCAGA"
-#define MyAppVersion "1.1"
+#define MyAppVersion "1.3"
 #define MyAppPublisher "Nouveau Depart"
 #define MyAppExeName "ChambreFroide.exe"
 
@@ -29,7 +29,7 @@ DisableProgramGroupPage=yes
 ; Uncomment the following line to run in non administrative install mode (install for current user only).
 ;PrivilegesRequired=lowest
 OutputDir=C:\Users\David banza\Desktop\FORMATION\PROJET D'INFORMATIQUE\Projet Chambre froide\Logiciel Desktop\dist
-OutputBaseFilename=socaga_setupV2
+OutputBaseFilename=socaga_setupV103
 SetupIconFile=C:\Users\David banza\Desktop\FORMATION\PROJET D'INFORMATIQUE\Projet Chambre froide\Logiciel Desktop\images\favicon.ico
 Password=SoCaGa
 Encryption=yes
