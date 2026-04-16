@@ -206,7 +206,7 @@ class WithdrawalsView(QWidget):
             return  # l'utilisateur a annulé
 
         try:
-            # Mettre à jour le retrait à IMMEDIAT avec la date actuelle
+            # Mettre à jour le retrait : changer le statut à IMMEDIAT et enregistrer la date d'exécution
             if update_sale(sale_id, statut_retrait="IMMEDIAT", date_retrait=QDate.currentDate().toString("yyyy-MM-dd")):
                 QMessageBox.information(
                     self,
