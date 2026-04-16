@@ -1901,7 +1901,7 @@ class SalesView(QWidget):
 
         table_data.append(["", "", "TOTAL", "", "", "", format_currency(total_montant), format_currency(total_paye), format_currency(total_reste)])
         
-        col_widths = [0.3*inch, 0.6*inch, 0.8*inch, 1.2*inch, 1.3*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.8*inch]
+        col_widths = [0.3*inch, 0.6*inch, 0.8*inch, 1.2*inch, 1.3*inch, 0.8*inch, 1.1*inch, 1.1*inch, 1.1*inch]
         table = Table(table_data, colWidths=col_widths)
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.blue),

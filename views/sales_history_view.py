@@ -343,7 +343,7 @@ class SalesHistoryView(QWidget):
 
         if self.is_manager:
             table_data.append(["", "TOTAL", "", "", "", format_currency(total_montant), format_currency(total_paye), format_currency(total_reste)])
-            col_widths = [0.4*inch, 0.8*inch, 1.2*inch, 1.4*inch, 1.0*inch, 1.0*inch, 0.9*inch, 0.9*inch]
+            col_widths = [0.4*inch, 0.8*inch, 1.2*inch, 1.4*inch, 1.0*inch, 1.1*inch, 1.1*inch, 1.1*inch]
         else:
             table_data.append(["", "TOTAL", "", "", format_currency(total_montant), format_currency(total_paye), format_currency(total_reste)])
             col_widths = [0.4*inch, 0.9*inch, 1.6*inch, 1.3*inch, 1.1*inch, 1.1*inch, 1.1*inch]
